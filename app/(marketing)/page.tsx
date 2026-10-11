@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { GraduationCap } from "lucide-react";
 import { CardIcon, ChatIcon, KeyIcon, QuizIcon } from "@/app/icons";
 
 const FEATURES = [
@@ -18,7 +19,12 @@ export default function LandingPage() {
   return (
     <div className="flex min-h-screen flex-col bg-white">
       <header className="mx-auto flex w-full max-w-4xl items-center justify-between px-6 py-4">
-        <span className="text-base font-bold tracking-tight">▲ NEXT</span>
+        <span className="flex items-center gap-1.5 text-base font-bold tracking-tight">
+          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-ink text-white">
+            <GraduationCap size={18} strokeWidth={2} />
+          </span>
+          NEXT
+        </span>
         <div className="flex gap-2">
           <Link href="/app/settings" className="btn-ghost !px-4 !py-1.5 text-sm">
             設定 Key

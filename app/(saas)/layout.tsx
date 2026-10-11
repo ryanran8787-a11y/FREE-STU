@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense } from "react";
+import { GraduationCap } from "lucide-react";
 import { TrpcProvider } from "@/app/TrpcProvider";
 import { trpc } from "@/lib/trpc";
 
@@ -28,8 +29,11 @@ function Nav() {
   return (
     <nav className="sticky top-0 z-10 border-b border-line bg-paper/85 backdrop-blur">
       <div className="mx-auto flex max-w-3xl items-center gap-1 p-3">
-        <Link href="/" className="mr-3 text-sm font-bold tracking-tight">
-          ▲ NEXT
+        <Link href="/" className="mr-3 flex items-center gap-1.5 text-sm font-bold tracking-tight">
+          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-ink text-white">
+            <GraduationCap size={15} strokeWidth={2} />
+          </span>
+          NEXT
         </Link>
         {LINKS.map((l) => {
           const active = pathname === l.href || pathname.startsWith(l.href + "/");
