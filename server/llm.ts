@@ -44,9 +44,43 @@ export async function chatCompletion(opts: {
 }
 
 export function parseJsonArray(text: string): unknown[] {
+  const tries: string[] = [text.trim()];
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-  const candidate = (fenced ? fenced[1] : text).trim();
-  const parsed: unknown = JSON.parse(candidate);
-  if (!Array.isArray(parsed)) throw new Error("回傳不是陣列");
-  return parsed;
+  if (fenced) tries.push(fenced[1].trim());
+  // 兜底：從第一個 [ 掃到配對的 ]（LLM 愛在前後加廢話）
+  const start = text.indexOf("[");
+  if (start !== -1) {
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (ch === "\\") esc = true;
+        else if (ch === '"') inStr = false;
+      } else if (ch === '"') {
+        inStr = true;
+      } else if (ch === "[") {
+        depth++;
+      } else if (ch === "]") {
+        depth--;
+        if (depth === 0) {
+          tries.push(text.slice(start, i + 1));
+          break;
+        }
+      }
+    }
+  }
+  const errors: string[] = [];
+  for (const t of tries) {
+    try {
+      const parsed: unknown = JSON.parse(t);
+      if (Array.isArray(parsed)) return parsed;
+      errors.push("回傳不是陣列");
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : "解析失敗");
+    }
+  }
+  throw new Error(`JSON 解析失敗：${errors[0] ?? "未知"}`);
 }

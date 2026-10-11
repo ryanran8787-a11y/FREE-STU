@@ -167,7 +167,7 @@ export function NoteDetail({ id }: { id: string }) {
         </div>
       )}
 
-      {note.data?.generations.filter((g) => g.status === "done" && g.result).map((g) => (
+      {note.data?.generations.filter((g) => g.status === "done" && g.result && g.id !== pollId).map((g) => (
         <div key={g.id}>
           <h2 className="mb-2 flex items-center gap-1.5 font-bold">
             {g.type === "flashcards" ? <CardIcon size={16} /> : <QuizIcon size={16} />}
