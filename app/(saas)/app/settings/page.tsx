@@ -40,10 +40,10 @@ const PRESET_GROUPS: { title: string; items: Preset[] }[] = [
     ],
   },
   {
-    title: "本機（不花錢不聯網）",
+    title: "本機（僅自架版可用）",
     items: [
-      { label: "Ollama", baseUrl: "http://localhost:11434/v1", model: "llama3.1", note: "本機跑，Key 隨便填" },
-      { label: "LM Studio", baseUrl: "http://localhost:1234/v1", model: "local-model", note: "本機跑，模型名看你載了什麼" },
+      { label: "Ollama", baseUrl: "http://localhost:11434/v1", model: "llama3.1", note: "僅自架版可用：本站後端轉發，打的是伺服器的 localhost。本機跑，Key 隨便填" },
+      { label: "LM Studio", baseUrl: "http://localhost:1234/v1", model: "local-model", note: "僅自架版可用。本機跑，模型名看你載了什麼" },
     ],
   },
 ];

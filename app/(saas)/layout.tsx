@@ -9,6 +9,7 @@ export default function SaasLayout({ children }: { children: React.ReactNode }) 
           HSHSA
         </Link>
         <Link href="/app/chat">對話</Link>
+        <Link href="/app/notes">筆記</Link>
         <Link href="/app/settings">設定</Link>
       </nav>
       <main className="mx-auto max-w-2xl p-6">{children}</main>
