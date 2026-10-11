@@ -69,6 +69,7 @@ function Quiz({ result }: { result: string }) {
                         : "border-line bg-card hover:border-muted"
                   }`}
                 >
+                  <span className="mr-2 font-mono font-bold text-muted">{"ABCD"[oi]}</span>
                   {op}
                 </button>
               );
@@ -105,8 +106,10 @@ export function NoteDetail({ id }: { id: string }) {
   );
 
   useEffect(() => {
-    if (poll.data?.status === "done" || poll.data?.status === "error") {
-      note.refetch();
+    // 做完就合併進歷史：refetch 完成後清掉 live，歷史只會出現一份。
+    // error 留著不清除，讓錯誤訊息一直可見。
+    if (poll.data?.status === "done") {
+      note.refetch().finally(() => setPollId(null));
     }
   }, [poll.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -167,7 +170,7 @@ export function NoteDetail({ id }: { id: string }) {
         </div>
       )}
 
-      {note.data?.generations.filter((g) => g.status === "done" && g.result && g.id !== pollId).map((g) => (
+      {note.data?.generations.filter((g) => g.status === "done" && g.result).map((g) => (
         <div key={g.id}>
           <h2 className="mb-2 flex items-center gap-1.5 font-bold">
             {g.type === "flashcards" ? <CardIcon size={16} /> : <QuizIcon size={16} />}
