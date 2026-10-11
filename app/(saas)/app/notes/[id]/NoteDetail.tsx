@@ -37,6 +37,10 @@ function Flashcards({ result }: { result: string }) {
   );
 }
 
+function stripLabel(op: string): string {
+  return op.replace(/^[A-D][、．.。:：\s]*/, "");
+}
+
 function Quiz({ result }: { result: string }) {
   const qs = JSON.parse(result) as { question: string; options: string[]; answer: number }[];
   const [picked, setPicked] = useState<Record<number, number>>({});
@@ -53,7 +57,8 @@ function Quiz({ result }: { result: string }) {
         <div key={qi} className="card p-4">
           <div className="text-sm font-bold">{qi + 1}. {q.question}</div>
           <div className="mt-2 flex flex-col gap-1.5">
-            {q.options.map((op, oi) => {
+            {q.options.map((raw, oi) => {
+              const op = stripLabel(raw);
               const sel = picked[qi] === oi;
               const show = picked[qi] !== undefined;
               const correct = oi === q.answer;
@@ -100,16 +105,21 @@ export function NoteDetail({ id }: { id: string }) {
   const note = trpc.note.get.useQuery({ id });
   const start = trpc.generation.start.useMutation();
   const [pollId, setPollId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const poll = trpc.generation.getStatus.useQuery(
     { id: pollId ?? "" },
     { enabled: !!pollId, refetchInterval: (q) => (q.state.data?.status === "done" || q.state.data?.status === "error" ? false : 2000) },
   );
 
   useEffect(() => {
-    // 做完就合併進歷史：refetch 完成後清掉 live，歷史只會出現一份。
+    // 做完就合併進歷史：refetch 完成後清掉 live 並選中它，歷史只會出現一份。
     // error 留著不清除，讓錯誤訊息一直可見。
     if (poll.data?.status === "done") {
-      note.refetch().finally(() => setPollId(null));
+      const doneId = pollId;
+      note.refetch().finally(() => {
+        setPollId(null);
+        if (doneId) setSelectedId(doneId);
+      });
     }
   }, [poll.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -170,16 +180,58 @@ export function NoteDetail({ id }: { id: string }) {
         </div>
       )}
 
-      {note.data?.generations.filter((g) => g.status === "done" && g.result).map((g) => (
-        <div key={g.id}>
-          <h2 className="mb-2 flex items-center gap-1.5 font-bold">
-            {g.type === "flashcards" ? <CardIcon size={16} /> : <QuizIcon size={16} />}
-            {g.type === "flashcards" ? "閃卡" : "測驗"}
-            <span className="ml-1 text-xs font-normal text-muted">{new Date(g.createdAt).toLocaleString("zh-TW")}</span>
-          </h2>
-          <GenView result={g.result!} />
-        </div>
-      ))}
+      {note.data && (
+        <HistoryArea
+          generations={(note.data.generations ?? []).filter((g) => g.status === "done" && g.result)}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+        />
+      )}
+    </div>
+  );
+}
+
+function countItems(result: string): number {
+  try {
+    const arr = JSON.parse(result) as unknown[];
+    return Array.isArray(arr) ? arr.length : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function HistoryArea({
+  generations,
+  selectedId,
+  onSelect,
+}: {
+  generations: { id: string; type: string; result: string | null; createdAt: Date }[];
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  if (generations.length === 0) return null;
+  const selected = generations.find((g) => g.id === selectedId) ?? generations[0];
+  return (
+    <div className="flex flex-col gap-3">
+      <h2 className="font-bold">歷史記錄 <span className="ml-1 text-xs font-normal text-muted">{generations.length} 份</span></h2>
+      <div className="card divide-y divide-line overflow-hidden">
+        {generations.map((g) => {
+          const active = selected.id === g.id;
+          return (
+            <button
+              key={g.id}
+              onClick={() => onSelect(g.id)}
+              className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-paper ${active ? "bg-paper font-semibold" : ""}`}
+            >
+              <span className="text-muted">{g.type === "flashcards" ? <CardIcon size={16} /> : <QuizIcon size={16} />}</span>
+              <span>{g.type === "flashcards" ? "閃卡" : "測驗"}</span>
+              <span className="text-xs text-muted">{countItems(g.result!)} 題</span>
+              <span className="ml-auto text-xs text-muted">{new Date(g.createdAt).toLocaleString("zh-TW")}</span>
+            </button>
+          );
+        })}
+      </div>
+      <GenView key={selected.id} result={selected.result!} />
     </div>
   );
 }
