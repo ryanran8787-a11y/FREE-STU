@@ -1,0 +1,40 @@
+// Prisma schema for HSHSA — 免費 AI 學習站 MVP.
+// M1: UserKey（BYOK）+ Note + Generation（M2 用，先建表）。
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model UserKey {
+  id        String   @id @default("default")
+  provider  String   @default("openai")
+  baseUrl   String   @default("https://api.openai.com/v1")
+  model     String   @default("gpt-4o-mini")
+  apiKey    String
+  updatedAt DateTime @updatedAt
+}
+
+model Note {
+  id          String       @id @default(cuid())
+  title       String       @default("未命名筆記")
+  rawText     String
+  createdAt   DateTime     @default(now())
+  generations Generation[]
+}
+
+model Generation {
+  id        String   @id @default(cuid())
+  type      String
+  status    String   @default("pending")
+  result    String?
+  error     String?
+  noteId    String
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
