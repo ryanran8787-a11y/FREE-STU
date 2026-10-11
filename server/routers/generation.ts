@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { flashcardCount, quizCount, type CountLevel } from "@/lib/counts";
 import { chatCompletion, getKeyOrThrow, logUsage, parseJsonArray } from "@/server/llm";
 import { publicProcedure, router } from "@/server/trpc";
 
@@ -7,11 +8,6 @@ const generationType = z.enum(["flashcards", "quiz"]);
 const countLevel = z.enum(["less", "standard", "more"]);
 const difficulty = z.enum(["easy", "medium", "hard"]);
 const language = z.enum(["zh-Hant", "zh-Hans", "en"]);
-
-const COUNTS: Record<z.infer<typeof generationType>, Record<z.infer<typeof countLevel>, number>> = {
-  flashcards: { less: 4, standard: 8, more: 12 },
-  quiz: { less: 3, standard: 5, more: 10 },
-};
 
 const DIFF_WORDS: Record<string, string> = {
   easy: "簡單（基礎記憶、定義）",
@@ -32,8 +28,7 @@ export type GenOptions = {
   focus: string;
 };
 
-function buildPrompt(type: z.infer<typeof generationType>, o: GenOptions): string {
-  const n = COUNTS[type][o.count];
+function buildPrompt(type: z.infer<typeof generationType>, o: GenOptions, n: number): string {
   const lang = LANG_WORDS[o.language];
   const focus = o.focus.trim() ? `\n主題聚焦：${o.focus.trim().slice(0, 500)}（優先圍繞這個主題出題）` : "";
   if (type === "flashcards") {
@@ -49,7 +44,6 @@ async function runGeneration(id: string) {
   });
   if (!gen || gen.status !== "running") return;
   try {
-    const key = await getKeyOrThrow();
     const options = JSON.parse(gen.options || "{}") as Partial<GenOptions>;
     const o: GenOptions = {
       count: options.count === "less" || options.count === "more" ? options.count : "standard",
@@ -58,11 +52,22 @@ async function runGeneration(id: string) {
       language: options.language === "zh-Hans" || options.language === "en" ? options.language : "zh-Hant",
       focus: typeof options.focus === "string" ? options.focus : "",
     };
+    // 數量按筆記字數現算，並寫回 options 供歷史顯示（放 getKey 前，沒 key 也能驗算）
+    const chars = gen.note.rawText.length;
+    const n =
+      gen.type === "flashcards"
+        ? flashcardCount(chars, o.count as CountLevel)
+        : quizCount(chars, o.count as CountLevel);
+    await db.generation.update({
+      where: { id: gen.id },
+      data: { options: JSON.stringify({ ...o, resolvedCount: n, chars }) },
+    });
+    const key = await getKeyOrThrow();
     const { text, usage } = await chatCompletion({
       baseUrl: key.baseUrl,
       apiKey: key.apiKey,
       model: key.model,
-      messages: [{ role: "user", content: buildPrompt(gen.type as keyof typeof COUNTS, o) + gen.note.rawText.slice(0, 12000) }],
+      messages: [{ role: "user", content: buildPrompt(gen.type as "flashcards" | "quiz", o, n) + gen.note.rawText.slice(0, 12000) }],
       temperature: 0.5,
     });
     await logUsage(gen.type, key.model, usage);

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CardIcon, QuizIcon, SparkIcon } from "@/app/icons";
+import { flashcardCount, quizCount } from "@/lib/counts";
 import { trpc } from "@/lib/trpc";
 
 type Gen = { id: string; status: string; result: string | null; error: string | null };
@@ -153,6 +154,10 @@ export function NoteDetail({ id }: { id: string }) {
     );
   }
 
+  const chars = note.data?.rawText.length ?? 0;
+  const fcPreview = flashcardCount(chars, count);
+  const quizPreview = quizCount(chars, count);
+  const levelLabel = level === "easy" ? "簡單" : level === "hard" ? "困難" : "中等";
   const live: Gen | null =
     poll.data && pollId
       ? { id: pollId, status: poll.data.status, result: poll.data.result, error: poll.data.error }
@@ -201,14 +206,14 @@ export function NoteDetail({ id }: { id: string }) {
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#F4F4F5]"><CardIcon size={20} /></span>
             <span>
               <span className="block font-semibold group-hover:text-accent">生成閃卡</span>
-              <span className="block text-xs text-muted">{count === "less" ? 4 : count === "more" ? 12 : 8} 張 · {level === "easy" ? "簡單" : level === "hard" ? "困難" : "中等"}</span>
+              <span className="block text-xs text-muted">{chars ? `${fcPreview} 張` : "…"} · {levelLabel}{chars ? ` · 依 ${chars.toLocaleString()} 字算` : ""}</span>
             </span>
           </button>
           <button onClick={() => gen("quiz")} disabled={start.isPending || !!busy} className="card group flex items-center gap-4 p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#F4F4F5]"><QuizIcon size={20} /></span>
             <span>
               <span className="block font-semibold group-hover:text-accent">生成測驗</span>
-              <span className="block text-xs text-muted">{count === "less" ? 3 : count === "more" ? 10 : 5} 題單選 · {level === "easy" ? "簡單" : level === "hard" ? "困難" : "中等"}</span>
+              <span className="block text-xs text-muted">{chars ? `${quizPreview} 題單選` : "…"} · {levelLabel}</span>
             </span>
           </button>
         </div>
