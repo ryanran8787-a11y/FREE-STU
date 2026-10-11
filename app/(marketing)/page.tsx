@@ -18,7 +18,7 @@ export default function LandingPage() {
   return (
     <div className="flex min-h-screen flex-col bg-white">
       <header className="mx-auto flex w-full max-w-4xl items-center justify-between px-6 py-4">
-        <span className="text-base font-bold tracking-tight">▲ HSHSA</span>
+        <span className="text-base font-bold tracking-tight">▲ NEXT</span>
         <div className="flex gap-2">
           <Link href="/app/settings" className="btn-ghost !px-4 !py-1.5 text-sm">
             設定 Key
@@ -56,11 +56,11 @@ export default function LandingPage() {
         <div className="mt-16 grid w-full gap-3 md:grid-cols-2">
           {FEATURES.map((f, i) => (
             <div key={f.title} className="card rise p-6" style={{ animationDelay: `${i * 60}ms` }}>
-              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-paper text-ink">
+              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#F4F4F5] text-ink">
                 {f.icon}
               </div>
-              <h3 className="mt-3 text-base font-semibold">{f.title}</h3>
-              <p className="mt-1 text-sm leading-relaxed text-muted">{f.desc}</p>
+              <h3 className="mt-3 text-base font-semibold leading-snug">{f.title}</h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted">{f.desc}</p>
             </div>
           ))}
         </div>
@@ -84,7 +84,7 @@ export default function LandingPage() {
       </main>
 
       <footer className="border-t border-line py-6 text-center text-xs text-muted">
-        HSHSA · 免費 AI 學習站 · 你的資料只存你的資料庫
+        NEXT · 免費 AI 學習站 · 你的資料只存你的資料庫
       </footer>
     </div>
   );

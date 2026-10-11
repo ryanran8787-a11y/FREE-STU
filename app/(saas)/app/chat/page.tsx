@@ -78,7 +78,7 @@ export default function ChatPage() {
         )}
         {ask.isPending && (
           <div className="flex items-center gap-2 text-sm text-muted">
-            <span className="inline-block h-2 w-2 animate-ping rounded-full bg-primary" />
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-ink" />
             助教想一下…
           </div>
         )}

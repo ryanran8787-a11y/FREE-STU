@@ -29,7 +29,7 @@ function Nav() {
     <nav className="sticky top-0 z-10 border-b border-line bg-paper/85 backdrop-blur">
       <div className="mx-auto flex max-w-3xl items-center gap-1 p-3">
         <Link href="/" className="mr-3 text-sm font-bold tracking-tight">
-          ▲ HSHSA
+          ▲ NEXT
         </Link>
         {LINKS.map((l) => {
           const active = pathname === l.href || pathname.startsWith(l.href + "/");

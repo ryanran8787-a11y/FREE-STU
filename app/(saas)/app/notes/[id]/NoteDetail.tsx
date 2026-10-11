@@ -153,7 +153,7 @@ export function NoteDetail({ id }: { id: string }) {
 
       {busy && (
         <div className="card flex items-center gap-3 p-4 text-sm font-medium">
-          <span className="inline-block h-2 w-2 animate-ping rounded-full bg-ink" />
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-ink" />
           AI 出題中…（{live?.status}，好了自動出現）
         </div>
       )}

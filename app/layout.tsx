@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "HSHSA — 免費 AI 學習站",
+  title: "NEXT — 免費 AI 學習站",
   description: "貼上筆記就能問、能測驗、能抽閃卡。模型用你自己的 Key，免費用到底。",
 };
 
