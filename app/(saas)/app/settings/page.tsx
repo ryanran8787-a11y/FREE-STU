@@ -80,60 +80,79 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-bold">設定</h1>
-      <p className="text-sm text-gray-600 dark:text-gray-300">
-        貼你自己的 API Key，模型費用走你自己的帳號，本站不經手。狀態：
-        {status.isLoading ? "讀取中…" : status.data?.hasKey ? `已設定（${status.data.provider} / ${status.data.model}）` : "未設定"}
-      </p>
+    <div className="flex flex-col gap-5">
+      <div>
+        <h1 className="text-2xl font-extrabold tracking-tight">設定</h1>
+        <p className="mt-1 text-sm text-muted">貼你自己的 API Key，模型費用走你自己的帳號，本站不經手。</p>
+      </div>
+
+      <div className={`card flex items-center gap-3 border-l-4 p-4 text-sm ${status.data?.hasKey ? "!border-l-primary" : "!border-l-sun"}`}>
+        <span className={`inline-block h-2.5 w-2.5 rounded-full ${status.data?.hasKey ? "bg-primary" : "bg-sun"}`} />
+        {status.isLoading
+          ? "讀取中…"
+          : status.data?.hasKey
+            ? <span>已設定：<b>{status.data.provider}</b> / {status.data.model}，可以直接用了 🎉</span>
+            : "尚未設定 Key，選一家開始吧（推薦免費的 Gemini）"}
+      </div>
+
       {PRESET_GROUPS.map((g) => (
         <div key={g.title} className="flex flex-col gap-2">
-          <p className="text-xs font-bold text-gray-500">{g.title}</p>
-          <div className="flex flex-wrap gap-2">
-            {g.items.map((p) => (
-              <button
-                key={p.label}
-                title={p.note}
-                onClick={() => {
-                  setProvider(p.label);
-                  setBaseUrl(p.baseUrl);
-                  setModel(p.model);
-                }}
-                className="rounded border px-3 py-1 text-sm"
-              >
-                {p.label}
-              </button>
-            ))}
+          <p className="text-xs font-bold uppercase tracking-wide text-muted">{g.title}</p>
+          <div className="grid gap-2 md:grid-cols-2">
+            {g.items.map((p) => {
+              const selected = provider === p.label;
+              return (
+                <button
+                  key={p.label}
+                  onClick={() => {
+                    setProvider(p.label);
+                    setBaseUrl(p.baseUrl);
+                    setModel(p.model);
+                  }}
+                  className={`card p-3 text-left transition-all hover:shadow-md ${selected ? "!border-primary ring-2 ring-primary/20" : ""}`}
+                >
+                  <div className="flex items-center gap-2 font-bold text-sm">
+                    {selected && <span className="inline-block h-2 w-2 rounded-full bg-primary" />}
+                    {p.label}
+                  </div>
+                  <div className="mt-0.5 text-xs text-muted">{p.note}</div>
+                  <div className="mt-1 font-mono text-[11px] text-muted">{p.model}</div>
+                </button>
+              );
+            })}
           </div>
         </div>
       ))}
-      <label className="flex flex-col gap-1 text-sm">
-        名稱
-        <input value={provider} onChange={(e) => setProvider(e.target.value)} className="rounded border p-2" />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Base URL（OpenAI 相容端點）
-        <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className="rounded border p-2" />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Model
-        <input value={model} onChange={(e) => setModel(e.target.value)} className="rounded border p-2" />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        API Key
-        <input
-          type="password"
-          value={apiKey}
-          onChange={(e) => setApiKey(e.target.value)}
-          placeholder="留空則只更新端點/模型"
-          className="rounded border p-2"
-        />
-      </label>
-      <button onClick={save} disabled={setKey.isPending} className="rounded bg-black px-4 py-2 text-white disabled:opacity-50 dark:bg-white dark:text-black">
-        儲存
-      </button>
-      {msg && <p className="text-sm">{msg}</p>}
-      <p className="text-xs text-gray-500">Ollama 本機模型走 localhost，Key 可隨便填（後端照傳，Ollama 會忽略）。</p>
+
+      <div className="card flex flex-col gap-3 p-4 md:p-5">
+        <h2 className="font-extrabold">微調</h2>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-semibold">名稱</span>
+          <input value={provider} onChange={(e) => setProvider(e.target.value)} className="field" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-semibold">Base URL（OpenAI 相容端點）</span>
+          <input value={baseUrl} onChange={(e) => setBaseUrl(e.target.value)} className="field font-mono text-xs" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-semibold">Model</span>
+          <input value={model} onChange={(e) => setModel(e.target.value)} className="field font-mono text-xs" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-semibold">API Key</span>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="留空則只更新端點/模型"
+            className="field"
+          />
+        </label>
+        <button onClick={save} disabled={setKey.isPending} className="btn-primary">
+          {setKey.isPending ? "儲存中…" : "儲存"}
+        </button>
+        {msg && <p className="text-sm">{msg}</p>}
+      </div>
     </div>
   );
 }

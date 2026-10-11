@@ -5,14 +5,16 @@ import { trpc } from "@/lib/trpc";
 
 type Msg = { role: "user" | "ai"; text: string };
 
+const SUGGESTIONS = ["幫我列出這段的 3 個重點", "用白話解釋一次", "考我一題"];
+
 export default function ChatPage() {
   const [input, setInput] = useState("");
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const ask = trpc.chat.ask.useMutation();
   const keyStatus = trpc.user.getKeyStatus.useQuery();
 
-  async function send() {
-    const message = input.trim();
+  async function send(text?: string) {
+    const message = (text ?? input).trim();
     if (!message || ask.isPending) return;
     setInput("");
     setMsgs((m) => [...m, { role: "user", text: message }]);
@@ -29,23 +31,59 @@ export default function ChatPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-bold">對話</h1>
-      {keyStatus.data && !keyStatus.data.hasKey && (
-        <p className="rounded border border-yellow-500 p-3 text-sm">
-          還沒設定 API Key，先去<a href="/app/settings" className="underline">設定頁</a>填，支援
-          OpenAI / Gemini / DeepSeek / Ollama（OpenAI 相容端點）。
-        </p>
-      )}
-      <div className="flex min-h-64 flex-col gap-3 rounded border p-4">
-        {msgs.length === 0 && <p className="text-gray-500">問點什麼吧，比如貼一段課文再問它。</p>}
-        {msgs.map((m, i) => (
-          <div key={i} className={m.role === "user" ? "self-end bg-gray-100 dark:bg-gray-800" : "self-start border"}>
-            <div className="max-w-full whitespace-pre-wrap rounded p-2 text-sm">{m.text}</div>
-          </div>
-        ))}
-        {ask.isPending && <p className="text-sm text-gray-500">想一下…</p>}
+      <div>
+        <h1 className="text-2xl font-extrabold tracking-tight">對話</h1>
+        <p className="mt-1 text-sm text-muted">問課業、問概念，助教用繁體中文回答。</p>
       </div>
-      <div className="flex gap-2">
+
+      {!keyStatus.isLoading && !keyStatus.data?.hasKey && (
+        <div className="card rise border-l-4 !border-l-sun p-4 text-sm">
+          還沒設定 API Key，先去
+          <a href="/app/settings" className="font-bold text-primary-deep underline">
+            設定頁
+          </a>
+          填一個，免費的 Gemini 就能用。
+        </div>
+      )}
+
+      <div className="card flex min-h-72 flex-col gap-4 p-4 md:p-5">
+        {msgs.length === 0 && (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
+            <div className="text-4xl">🎒</div>
+            <p className="text-sm text-muted">還沒開始聊，試試下面這些：</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {SUGGESTIONS.map((s) => (
+                <button key={s} onClick={() => send(s)} className="btn-ghost !px-3 !py-1.5 text-xs">
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        {msgs.map((m, i) =>
+          m.role === "user" ? (
+            <div key={i} className="rise flex justify-end">
+              <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm leading-relaxed text-white">
+                {m.text}
+              </div>
+            </div>
+          ) : (
+            <div key={i} className="rise flex justify-start">
+              <div className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-bl-md border border-line bg-paper px-4 py-2.5 text-sm leading-relaxed">
+                {m.text}
+              </div>
+            </div>
+          ),
+        )}
+        {ask.isPending && (
+          <div className="flex items-center gap-2 text-sm text-muted">
+            <span className="inline-block h-2 w-2 animate-ping rounded-full bg-primary" />
+            助教想一下…
+          </div>
+        )}
+      </div>
+
+      <div className="sticky bottom-4 flex gap-2">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -55,14 +93,14 @@ export default function ChatPage() {
               send();
             }
           }}
-          rows={3}
-          placeholder="輸入問題，Enter 送出"
-          className="flex-1 rounded border p-2 text-sm"
+          rows={2}
+          placeholder="輸入問題，Enter 送出（Shift+Enter 換行）"
+          className="field resize-none shadow-lg"
         />
         <button
-          onClick={send}
-          disabled={ask.isPending}
-          className="rounded bg-black px-4 text-white disabled:opacity-50 dark:bg-white dark:text-black"
+          onClick={() => send()}
+          disabled={ask.isPending || !input.trim()}
+          className="btn-primary shrink-0 !rounded-2xl"
         >
           送出
         </button>

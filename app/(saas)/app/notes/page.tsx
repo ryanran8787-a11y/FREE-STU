@@ -19,39 +19,47 @@ export default function NotesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-bold">筆記</h1>
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        placeholder="標題（可空）"
-        className="rounded border p-2 text-sm"
-      />
-      <textarea
-        value={rawText}
-        onChange={(e) => setRawText(e.target.value)}
-        rows={6}
-        placeholder="貼上課文、講義文字…"
-        className="rounded border p-2 text-sm"
-      />
-      <button
-        onClick={save}
-        disabled={create.isPending}
-        className="rounded bg-black px-4 py-2 text-white disabled:opacity-50 dark:bg-white dark:text-black"
-      >
-        存成筆記
-      </button>
-      <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-5">
+      <div>
+        <h1 className="text-2xl font-extrabold tracking-tight">筆記</h1>
+        <p className="mt-1 text-sm text-muted">貼上課文講義，存成筆記後就能生成閃卡和測驗。</p>
+      </div>
+
+      <div className="card flex flex-col gap-3 p-4 md:p-5">
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="標題（可空，例如：生物第三章）"
+          className="field"
+        />
+        <textarea
+          value={rawText}
+          onChange={(e) => setRawText(e.target.value)}
+          rows={5}
+          placeholder="貼上課文、講義文字…"
+          className="field resize-y"
+        />
+        <button onClick={save} disabled={create.isPending || !rawText.trim()} className="btn-primary self-start">
+          {create.isPending ? "儲存中…" : "＋ 存成筆記"}
+        </button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
         {notes.data?.map((n) => (
-          <Link key={n.id} href={`/app/notes/${n.id}`} className="rounded border p-3 hover:bg-gray-50 dark:hover:bg-gray-900">
-            <div className="font-bold">{n.title}</div>
-            <div className="text-xs text-gray-500">
+          <Link key={n.id} href={`/app/notes/${n.id}`} className="card group p-4 transition-shadow hover:shadow-md">
+            <div className="font-bold transition-colors group-hover:text-primary-deep">{n.title}</div>
+            <div className="mt-1 text-xs text-muted">
               {new Date(n.createdAt).toLocaleString("zh-TW")} · {n._count.generations} 個生成
             </div>
           </Link>
         ))}
-        {notes.data?.length === 0 && <p className="text-sm text-gray-500">還沒有筆記，上面貼第一份吧。</p>}
       </div>
+      {notes.data?.length === 0 && (
+        <div className="card flex flex-col items-center gap-2 p-10 text-center">
+          <div className="text-4xl">📚</div>
+          <p className="text-sm text-muted">還沒有筆記，上面貼第一份吧。</p>
+        </div>
+      )}
     </div>
   );
 }
