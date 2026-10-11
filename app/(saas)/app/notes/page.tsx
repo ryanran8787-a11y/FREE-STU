@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { BookIcon } from "@/app/icons";
+import { useRef, useState } from "react";
+import { BookIcon, UploadIcon } from "@/app/icons";
 import { trpc } from "@/lib/trpc";
 
 export default function NotesPage() {
@@ -10,6 +10,8 @@ export default function NotesPage() {
   const create = trpc.note.create.useMutation();
   const [title, setTitle] = useState("");
   const [rawText, setRawText] = useState("");
+  const [uploadMsg, setUploadMsg] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
 
   async function save() {
     if (!rawText.trim() || create.isPending) return;
@@ -17,6 +19,25 @@ export default function NotesPage() {
     setTitle("");
     setRawText("");
     notes.refetch();
+  }
+
+  async function upload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadMsg("上傳解析中…");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: form });
+      const json = (await res.json()) as { id?: string; chars?: number; error?: string };
+      if (!res.ok || !json.id) throw new Error(json.error ?? "上傳失敗");
+      setUploadMsg(`已存成筆記（${json.chars} 字），跳轉中…`);
+      notes.refetch();
+      window.location.href = `/app/notes/${json.id}`;
+    } catch (err) {
+      setUploadMsg(`失敗：${err instanceof Error ? err.message : "未知錯誤"}`);
+    }
   }
 
   return (
@@ -27,6 +48,15 @@ export default function NotesPage() {
       </div>
 
       <div className="card flex flex-col gap-3 p-4 md:p-5">
+        <div className="flex items-center gap-2">
+          <h2 className="font-bold">貼文字</h2>
+          <span className="text-xs text-muted">或</span>
+          <button onClick={() => fileRef.current?.click()} className="btn-ghost !px-3 !py-1.5 text-xs">
+            <UploadIcon size={14} /> 上傳 .txt / .md / .pdf
+          </button>
+          <input ref={fileRef} type="file" accept=".txt,.md,.markdown,.pdf" onChange={upload} className="hidden" />
+        </div>
+        {uploadMsg && <p className="text-xs text-muted">{uploadMsg}</p>}
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}

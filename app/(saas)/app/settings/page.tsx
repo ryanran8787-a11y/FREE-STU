@@ -52,6 +52,7 @@ const DEFAULT_PRESET = PRESET_GROUPS[0].items[0];
 
 export default function SettingsPage() {
   const status = trpc.user.getKeyStatus.useQuery();
+  const usage = trpc.usage.stats.useQuery();
   const setKey = trpc.user.setKey.useMutation();
   const [provider, setProvider] = useState("openai");
   const [baseUrl, setBaseUrl] = useState(DEFAULT_PRESET.baseUrl);
@@ -125,6 +126,25 @@ export default function SettingsPage() {
       ))}
 
       <div className="card flex flex-col gap-3 p-4 md:p-5">
+        <h2 className="font-extrabold">用量（你自己的 Key 花的）</h2>
+        {usage.data ? (
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-md bg-paper p-3">
+              <div className="text-lg font-bold">{usage.data.todayTokens.toLocaleString()}</div>
+              <div className="text-xs text-muted">今日 tokens</div>
+            </div>
+            <div className="rounded-md bg-paper p-3">
+              <div className="text-lg font-bold">{usage.data.totalTokens.toLocaleString()}</div>
+              <div className="text-xs text-muted">累計 tokens</div>
+            </div>
+            <div className="rounded-md bg-paper p-3">
+              <div className="text-lg font-bold">{usage.data.calls.reduce((a, c) => a + c.count, 0)}</div>
+              <div className="text-xs text-muted">累計呼叫（{usage.data.calls.map((c) => `${c.kind}×${c.count}`).join(" ") || "無"}）</div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted">讀取中…</p>
+        )}
         <h2 className="font-extrabold">微調</h2>
         <label className="flex flex-col gap-1 text-sm">
           <span className="font-semibold">名稱</span>

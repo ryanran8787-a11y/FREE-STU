@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { chatCompletion, getKeyOrThrow } from "@/server/llm";
+import { chatCompletion, getKeyOrThrow, logUsage } from "@/server/llm";
 import { publicProcedure, router } from "@/server/trpc";
 
 export const chatRouter = router({
@@ -26,12 +26,13 @@ export const chatRouter = router({
         messages.push({ role: "system", content: "你是學習助教，用繁體中文回答。" });
       }
       messages.push({ role: "user", content: input.message });
-      const reply = await chatCompletion({
+      const { text, usage } = await chatCompletion({
         baseUrl: key.baseUrl,
         apiKey: key.apiKey,
         model: key.model,
         messages,
       });
-      return { reply };
+      await logUsage("chat", key.model, usage);
+      return { reply: text };
     }),
 });

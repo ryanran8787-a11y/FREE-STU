@@ -15,7 +15,7 @@ export async function chatCompletion(opts: {
   model: string;
   messages: { role: string; content: string }[];
   temperature?: number;
-}): Promise<string> {
+}): Promise<{ text: string; usage: { promptTokens: number; completionTokens: number } }> {
   const res = await fetch(`${opts.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -37,10 +37,27 @@ export async function chatCompletion(opts: {
   }
   const json = (await res.json()) as {
     choices?: { message?: { content?: string } }[];
+    usage?: { prompt_tokens?: number; completion_tokens?: number };
   };
   const content = json.choices?.[0]?.message?.content?.trim();
   if (!content) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "LLM 回傳為空" });
-  return content;
+  return {
+    text: content,
+    usage: {
+      promptTokens: json.usage?.prompt_tokens ?? 0,
+      completionTokens: json.usage?.completion_tokens ?? 0,
+    },
+  };
+}
+
+export async function logUsage(kind: string, model: string, usage: { promptTokens: number; completionTokens: number }) {
+  try {
+    await db.usage.create({
+      data: { kind, model, promptTokens: usage.promptTokens, completionTokens: usage.completionTokens },
+    });
+  } catch {
+    // 記賬失敗不影響主流程
+  }
 }
 
 export function parseJsonArray(text: string): unknown[] {

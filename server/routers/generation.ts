@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { chatCompletion, getKeyOrThrow, parseJsonArray } from "@/server/llm";
+import { chatCompletion, getKeyOrThrow, logUsage, parseJsonArray } from "@/server/llm";
 import { publicProcedure, router } from "@/server/trpc";
 
 const generationType = z.enum(["flashcards", "quiz"]);
@@ -19,14 +19,15 @@ async function runGeneration(id: string) {
   if (!gen || gen.status !== "running") return;
   try {
     const key = await getKeyOrThrow();
-    const reply = await chatCompletion({
+    const { text, usage } = await chatCompletion({
       baseUrl: key.baseUrl,
       apiKey: key.apiKey,
       model: key.model,
       messages: [{ role: "user", content: PROMPTS[gen.type as keyof typeof PROMPTS] + gen.note.rawText.slice(0, 12000) }],
       temperature: 0.5,
     });
-    const items = parseJsonArray(reply);
+    await logUsage(gen.type, key.model, usage);
+    const items = parseJsonArray(text);
     await db.generation.update({
       where: { id },
       data: { status: "done", result: JSON.stringify(items) },

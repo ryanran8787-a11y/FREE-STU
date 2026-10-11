@@ -38,3 +38,12 @@ model Generation {
   note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 }
+
+model Usage {
+  id               String   @id @default(cuid())
+  kind             String
+  model            String   @default("")
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  createdAt        DateTime @default(now())
+}
