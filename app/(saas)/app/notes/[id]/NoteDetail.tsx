@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CardIcon, QuizIcon, SparkIcon } from "@/app/icons";
 import { trpc } from "@/lib/trpc";
 
 type Gen = { id: string; status: string; result: string | null; error: string | null };
@@ -19,8 +20,8 @@ function Flashcards({ result }: { result: string }) {
             <div className="text-xs font-semibold text-muted">題面 {i + 1}/{cards.length} · 點我翻面</div>
             <div className="mt-2 text-lg font-bold">{c.front}</div>
           </div>
-          <div className="flip-face flip-back card flex min-h-44 cursor-pointer flex-col items-center justify-center border-primary bg-primary-soft p-6 text-center">
-            <div className="text-xs font-semibold text-primary-deep">答案 · 點我翻回</div>
+          <div className="flip-face flip-back card flex min-h-44 cursor-pointer flex-col items-center justify-center bg-paper p-6 text-center">
+            <div className="text-xs font-semibold text-muted">答案 · 點我翻回</div>
             <div className="mt-2">{c.back}</div>
           </div>
         </div>
@@ -44,8 +45,8 @@ function Quiz({ result }: { result: string }) {
   return (
     <div className="flex flex-col gap-3">
       {done && (
-        <div className="card rise border-primary bg-primary-soft p-4 text-center font-extrabold text-primary-deep">
-          {score}/{qs.length} 分 {score === qs.length ? "🎉 全對！" : score >= qs.length / 2 ? "👍 不錯，錯的再看一次" : "💪 加油，再複習一下"}
+        <div className="card rise border-accent bg-accent-soft p-4 text-center font-bold text-ink">
+          {score}/{qs.length} 分 {score === qs.length ? "全對！" : score >= qs.length / 2 ? "不錯，錯的再看一次" : "加油，再複習一下"}
         </div>
       )}
       {qs.map((q, qi) => (
@@ -60,12 +61,12 @@ function Quiz({ result }: { result: string }) {
                 <button
                   key={oi}
                   onClick={() => setPicked((p) => (p[qi] !== undefined ? p : { ...p, [qi]: oi }))}
-                  className={`rounded-xl border px-3 py-2 text-left text-sm transition-colors ${
+                  className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
                     show && correct
-                      ? "border-primary bg-primary-soft font-semibold"
+                      ? "border-accent bg-accent-soft font-semibold"
                       : show && sel
                         ? "border-red-400 bg-red-50"
-                        : "border-line bg-card hover:border-primary"
+                        : "border-line bg-card hover:border-muted"
                   }`}
                 >
                   {op}
@@ -134,21 +135,25 @@ export function NoteDetail({ id }: { id: string }) {
       )}
 
       <div className="grid gap-3 md:grid-cols-2">
-        <button onClick={() => gen("flashcards")} disabled={start.isPending || !!busy} className="card group p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
-          <div className="text-2xl">🃏</div>
-          <div className="mt-2 font-extrabold group-hover:text-primary-deep">生成閃卡</div>
-          <div className="text-xs text-muted">8 張抽認卡，翻卡複習</div>
+        <button onClick={() => gen("flashcards")} disabled={start.isPending || !!busy} className="card group flex items-center gap-4 p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-paper"><CardIcon size={22} /></span>
+          <span>
+            <span className="block font-semibold group-hover:text-accent">生成閃卡</span>
+            <span className="block text-xs text-muted">8 張抽認卡，翻卡複習</span>
+          </span>
         </button>
-        <button onClick={() => gen("quiz")} disabled={start.isPending || !!busy} className="card group p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
-          <div className="text-2xl">📝</div>
-          <div className="mt-2 font-extrabold group-hover:text-primary-deep">生成測驗</div>
-          <div className="text-xs text-muted">5 題單選，即答即改</div>
+        <button onClick={() => gen("quiz")} disabled={start.isPending || !!busy} className="card group flex items-center gap-4 p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-paper"><QuizIcon size={22} /></span>
+          <span>
+            <span className="block font-semibold group-hover:text-accent">生成測驗</span>
+            <span className="block text-xs text-muted">5 題單選，即答即改</span>
+          </span>
         </button>
       </div>
 
       {busy && (
-        <div className="card flex items-center gap-3 border-primary bg-primary-soft p-4 text-sm font-semibold text-primary-deep">
-          <span className="inline-block h-2.5 w-2.5 animate-ping rounded-full bg-primary" />
+        <div className="card flex items-center gap-3 p-4 text-sm font-medium">
+          <span className="inline-block h-2 w-2 animate-ping rounded-full bg-ink" />
           AI 出題中…（{live?.status}，好了自動出現）
         </div>
       )}
@@ -157,16 +162,17 @@ export function NoteDetail({ id }: { id: string }) {
       )}
       {live?.status === "done" && live.result && (
         <div className="rise">
-          <h2 className="mb-2 font-extrabold">✨ 剛出爐</h2>
+          <h2 className="mb-2 flex items-center gap-1.5 font-bold"><SparkIcon size={16} /> 剛出爐</h2>
           <GenView result={live.result} />
         </div>
       )}
 
       {note.data?.generations.filter((g) => g.status === "done" && g.result).map((g) => (
         <div key={g.id}>
-          <h2 className="mb-2 font-extrabold">
-            {g.type === "flashcards" ? "🃏 閃卡" : "📝 測驗"}
-            <span className="ml-2 text-xs font-normal text-muted">{new Date(g.createdAt).toLocaleString("zh-TW")}</span>
+          <h2 className="mb-2 flex items-center gap-1.5 font-bold">
+            {g.type === "flashcards" ? <CardIcon size={16} /> : <QuizIcon size={16} />}
+            {g.type === "flashcards" ? "閃卡" : "測驗"}
+            <span className="ml-1 text-xs font-normal text-muted">{new Date(g.createdAt).toLocaleString("zh-TW")}</span>
           </h2>
           <GenView result={g.result!} />
         </div>

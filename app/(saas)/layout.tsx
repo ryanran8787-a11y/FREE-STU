@@ -28,8 +28,8 @@ function Nav() {
   return (
     <nav className="sticky top-0 z-10 border-b border-line bg-paper/85 backdrop-blur">
       <div className="mx-auto flex max-w-3xl items-center gap-1 p-3">
-        <Link href="/" className="mr-3 text-base font-extrabold tracking-tight">
-          <span className="text-primary">HSHSA</span>
+        <Link href="/" className="mr-3 text-sm font-bold tracking-tight">
+          ▲ HSHSA
         </Link>
         {LINKS.map((l) => {
           const active = pathname === l.href || pathname.startsWith(l.href + "/");
@@ -37,8 +37,8 @@ function Nav() {
             <Link
               key={l.href}
               href={l.href}
-              className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-                active ? "bg-primary-soft text-primary-deep" : "text-muted hover:text-ink"
+              className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+                active ? "bg-paper font-semibold text-ink" : "text-muted hover:text-ink"
               }`}
             >
               {l.label}

@@ -91,7 +91,7 @@ export default function SettingsPage() {
         {status.isLoading
           ? "讀取中…"
           : status.data?.hasKey
-            ? <span>已設定：<b>{status.data.provider}</b> / {status.data.model}，可以直接用了 🎉</span>
+            ? <span>已設定：<b>{status.data.provider}</b> / {status.data.model}，可以直接用了</span>
             : "尚未設定 Key，選一家開始吧（推薦免費的 Gemini）"}
       </div>
 

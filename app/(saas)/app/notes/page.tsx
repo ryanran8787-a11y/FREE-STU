@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { BookIcon } from "@/app/icons";
 import { trpc } from "@/lib/trpc";
 
 export default function NotesPage() {
@@ -47,7 +48,7 @@ export default function NotesPage() {
       <div className="grid gap-3 md:grid-cols-2">
         {notes.data?.map((n) => (
           <Link key={n.id} href={`/app/notes/${n.id}`} className="card group p-4 transition-shadow hover:shadow-md">
-            <div className="font-bold transition-colors group-hover:text-primary-deep">{n.title}</div>
+            <div className="text-sm font-semibold transition-colors group-hover:text-accent">{n.title}</div>
             <div className="mt-1 text-xs text-muted">
               {new Date(n.createdAt).toLocaleString("zh-TW")} · {n._count.generations} 個生成
             </div>
@@ -55,9 +56,9 @@ export default function NotesPage() {
         ))}
       </div>
       {notes.data?.length === 0 && (
-        <div className="card flex flex-col items-center gap-2 p-10 text-center">
-          <div className="text-4xl">📚</div>
-          <p className="text-sm text-muted">還沒有筆記，上面貼第一份吧。</p>
+        <div className="card flex flex-col items-center gap-2 p-10 text-center text-muted">
+          <BookIcon size={28} />
+          <p className="text-sm">還沒有筆記，上面貼第一份吧。</p>
         </div>
       )}
     </div>

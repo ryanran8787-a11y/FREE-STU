@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { BagIcon } from "@/app/icons";
 import { trpc } from "@/lib/trpc";
 
 type Msg = { role: "user" | "ai"; text: string };
@@ -37,9 +38,9 @@ export default function ChatPage() {
       </div>
 
       {!keyStatus.isLoading && !keyStatus.data?.hasKey && (
-        <div className="card rise border-l-4 !border-l-sun p-4 text-sm">
+        <div className="card rise border-l-2 !border-l-sun p-4 text-sm">
           還沒設定 API Key，先去
-          <a href="/app/settings" className="font-bold text-primary-deep underline">
+          <a href="/app/settings" className="font-semibold text-accent underline">
             設定頁
           </a>
           填一個，免費的 Gemini 就能用。
@@ -48,9 +49,9 @@ export default function ChatPage() {
 
       <div className="card flex min-h-72 flex-col gap-4 p-4 md:p-5">
         {msgs.length === 0 && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center">
-            <div className="text-4xl">🎒</div>
-            <p className="text-sm text-muted">還沒開始聊，試試下面這些：</p>
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 py-8 text-center text-muted">
+            <BagIcon size={28} />
+            <p className="text-sm">還沒開始聊，試試下面這些：</p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((s) => (
                 <button key={s} onClick={() => send(s)} className="btn-ghost !px-3 !py-1.5 text-xs">
@@ -63,13 +64,13 @@ export default function ChatPage() {
         {msgs.map((m, i) =>
           m.role === "user" ? (
             <div key={i} className="rise flex justify-end">
-              <div className="max-w-[85%] rounded-2xl rounded-br-md bg-primary px-4 py-2.5 text-sm leading-relaxed text-white">
+              <div className="max-w-[85%] rounded-lg rounded-br-sm bg-ink px-3.5 py-2.5 text-sm leading-relaxed text-white">
                 {m.text}
               </div>
             </div>
           ) : (
             <div key={i} className="rise flex justify-start">
-              <div className="max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-bl-md border border-line bg-paper px-4 py-2.5 text-sm leading-relaxed">
+              <div className="max-w-[90%] whitespace-pre-wrap rounded-lg rounded-bl-sm border border-line bg-paper px-3.5 py-2.5 text-sm leading-relaxed">
                 {m.text}
               </div>
             </div>
