@@ -111,6 +111,10 @@ export function NoteDetail({ id }: { id: string }) {
   const start = trpc.generation.start.useMutation();
   const [pollId, setPollId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [count, setCount] = useState<"less" | "standard" | "more">("standard");
+  const [level, setLevel] = useState<"easy" | "medium" | "hard">("medium");
+  const [lang, setLang] = useState<"zh-Hant" | "zh-Hans" | "en">("zh-Hant");
+  const [focus, setFocus] = useState("");
   const poll = trpc.generation.getStatus.useQuery(
     { id: pollId ?? "" },
     { enabled: !!pollId, refetchInterval: (q) => (q.state.data?.status === "done" || q.state.data?.status === "error" ? false : 2000) },
@@ -129,8 +133,24 @@ export function NoteDetail({ id }: { id: string }) {
   }, [poll.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function gen(type: "flashcards" | "quiz") {
-    const res = await start.mutateAsync({ noteId: id, type });
+    const res = await start.mutateAsync({ noteId: id, type, count, difficulty: level, language: lang, focus });
     setPollId(res.id);
+  }
+
+  function Seg<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { v: T; label: string }[] }) {
+    return (
+      <div className="inline-flex overflow-hidden rounded-md border border-line">
+        {options.map((o, i) => (
+          <button
+            key={o.v}
+            onClick={() => onChange(o.v)}
+            className={`px-3 py-1.5 text-xs font-medium transition-colors ${i > 0 ? "border-l border-line" : ""} ${value === o.v ? "bg-ink text-white" : "bg-card hover:bg-paper"}`}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+    );
   }
 
   const live: Gen | null =
@@ -152,21 +172,46 @@ export function NoteDetail({ id }: { id: string }) {
         </details>
       )}
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <button onClick={() => gen("flashcards")} disabled={start.isPending || !!busy} className="card group flex items-center gap-4 p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-paper"><CardIcon size={22} /></span>
-          <span>
-            <span className="block font-semibold group-hover:text-accent">生成閃卡</span>
-            <span className="block text-xs text-muted">8 張抽認卡，翻卡複習</span>
-          </span>
-        </button>
-        <button onClick={() => gen("quiz")} disabled={start.isPending || !!busy} className="card group flex items-center gap-4 p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-paper"><QuizIcon size={22} /></span>
-          <span>
-            <span className="block font-semibold group-hover:text-accent">生成測驗</span>
-            <span className="block text-xs text-muted">5 題單選，即答即改</span>
-          </span>
-        </button>
+      <div className="card flex flex-col gap-4 p-4 md:p-5">
+        <h2 className="font-bold">出題設定</h2>
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-muted">數量</span>
+            <Seg value={count} onChange={setCount} options={[{ v: "less", label: "更少" }, { v: "standard", label: "標準" }, { v: "more", label: "更多" }]} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-muted">難度</span>
+            <Seg value={level} onChange={setLevel} options={[{ v: "easy", label: "簡單" }, { v: "medium", label: "中等" }, { v: "hard", label: "困難" }]} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-muted">語言</span>
+            <select value={lang} onChange={(e) => setLang(e.target.value as typeof lang)} className="field !w-auto text-xs">
+              <option value="zh-Hant">繁體中文</option>
+              <option value="zh-Hans">简体中文</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs font-semibold text-muted">主題聚焦（可空：只圍繞這個主題出）</span>
+          <textarea value={focus} onChange={(e) => setFocus(e.target.value)} rows={2} placeholder="例如：只考監護與輔助宣告的部分" className="field resize-y text-sm" />
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          <button onClick={() => gen("flashcards")} disabled={start.isPending || !!busy} className="card group flex items-center gap-4 p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#F4F4F5]"><CardIcon size={20} /></span>
+            <span>
+              <span className="block font-semibold group-hover:text-accent">生成閃卡</span>
+              <span className="block text-xs text-muted">{count === "less" ? 4 : count === "more" ? 12 : 8} 張 · {level === "easy" ? "簡單" : level === "hard" ? "困難" : "中等"}</span>
+            </span>
+          </button>
+          <button onClick={() => gen("quiz")} disabled={start.isPending || !!busy} className="card group flex items-center gap-4 p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#F4F4F5]"><QuizIcon size={20} /></span>
+            <span>
+              <span className="block font-semibold group-hover:text-accent">生成測驗</span>
+              <span className="block text-xs text-muted">{count === "less" ? 3 : count === "more" ? 10 : 5} 題單選 · {level === "easy" ? "簡單" : level === "hard" ? "困難" : "中等"}</span>
+            </span>
+          </button>
+        </div>
       </div>
 
       {busy && (

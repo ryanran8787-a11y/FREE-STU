@@ -4,12 +4,43 @@ import { chatCompletion, getKeyOrThrow, logUsage, parseJsonArray } from "@/serve
 import { publicProcedure, router } from "@/server/trpc";
 
 const generationType = z.enum(["flashcards", "quiz"]);
+const countLevel = z.enum(["less", "standard", "more"]);
+const difficulty = z.enum(["easy", "medium", "hard"]);
+const language = z.enum(["zh-Hant", "zh-Hans", "en"]);
 
-const PROMPTS: Record<z.infer<typeof generationType>, string> = {
-  flashcards:
-    "你是學習助教。根據以下筆記產生 8 張繁體中文閃卡，只回傳 JSON 陣列，每個元素 {front, back}，不要其他文字：\n\n",
-  quiz: "你是學習助教。根據以下筆記產生 5 題繁體中文單選測驗，只回傳 JSON 陣列，每個元素 {question, options(4個字串，不要加A/B/C/D編號), answer(正確選項的索引0-3), explanation(為什麼正確、一兩句話繁體中文)}，不要其他文字：\n\n",
+const COUNTS: Record<z.infer<typeof generationType>, Record<z.infer<typeof countLevel>, number>> = {
+  flashcards: { less: 4, standard: 8, more: 12 },
+  quiz: { less: 3, standard: 5, more: 10 },
 };
+
+const DIFF_WORDS: Record<string, string> = {
+  easy: "簡單（基礎記憶、定義）",
+  medium: "中等（理解應用）",
+  hard: "困難（綜合分析、陷阱題）",
+};
+
+const LANG_WORDS: Record<string, string> = {
+  "zh-Hant": "繁體中文",
+  "zh-Hans": "简体中文",
+  en: "English",
+};
+
+export type GenOptions = {
+  count: z.infer<typeof countLevel>;
+  difficulty: z.infer<typeof difficulty>;
+  language: z.infer<typeof language>;
+  focus: string;
+};
+
+function buildPrompt(type: z.infer<typeof generationType>, o: GenOptions): string {
+  const n = COUNTS[type][o.count];
+  const lang = LANG_WORDS[o.language];
+  const focus = o.focus.trim() ? `\n主題聚焦：${o.focus.trim().slice(0, 500)}（優先圍繞這個主題出題）` : "";
+  if (type === "flashcards") {
+    return `你是學習助教。根據以下筆記產生 ${n} 張${lang}閃卡，難度${DIFF_WORDS[o.difficulty]}，只回傳 JSON 陣列，每個元素 {front, back}，不要其他文字：${focus}\n\n`;
+  }
+  return `你是學習助教。根據以下筆記產生 ${n} 題${lang}單選測驗，難度${DIFF_WORDS[o.difficulty]}，只回傳 JSON 陣列，每個元素 {question, options(4個字串，不要加A/B/C/D編號), answer(正確選項的索引0-3), explanation(為什麼正確、一兩句話${lang})}，不要其他文字：${focus}\n\n`;
+}
 
 async function runGeneration(id: string) {
   const gen = await db.generation.findUnique({
@@ -19,11 +50,19 @@ async function runGeneration(id: string) {
   if (!gen || gen.status !== "running") return;
   try {
     const key = await getKeyOrThrow();
+    const options = JSON.parse(gen.options || "{}") as Partial<GenOptions>;
+    const o: GenOptions = {
+      count: options.count === "less" || options.count === "more" ? options.count : "standard",
+      difficulty:
+        options.difficulty === "easy" || options.difficulty === "hard" ? options.difficulty : "medium",
+      language: options.language === "zh-Hans" || options.language === "en" ? options.language : "zh-Hant",
+      focus: typeof options.focus === "string" ? options.focus : "",
+    };
     const { text, usage } = await chatCompletion({
       baseUrl: key.baseUrl,
       apiKey: key.apiKey,
       model: key.model,
-      messages: [{ role: "user", content: PROMPTS[gen.type as keyof typeof PROMPTS] + gen.note.rawText.slice(0, 12000) }],
+      messages: [{ role: "user", content: buildPrompt(gen.type as keyof typeof COUNTS, o) + gen.note.rawText.slice(0, 12000) }],
       temperature: 0.5,
     });
     await logUsage(gen.type, key.model, usage);
@@ -42,12 +81,26 @@ async function runGeneration(id: string) {
 
 export const generationRouter = router({
   start: publicProcedure
-    .input(z.object({ noteId: z.string(), type: generationType }))
+    .input(
+      z.object({
+        noteId: z.string(),
+        type: generationType,
+        count: countLevel.default("standard"),
+        difficulty: difficulty.default("medium"),
+        language: language.default("zh-Hant"),
+        focus: z.string().max(500).default(""),
+      }),
+    )
     .mutation(async ({ input }) => {
       const note = await db.note.findUnique({ where: { id: input.noteId } });
       if (!note) throw new Error("找不到筆記");
       const gen = await db.generation.create({
-        data: { noteId: input.noteId, type: input.type, status: "pending" },
+        data: {
+          noteId: input.noteId,
+          type: input.type,
+          status: "pending",
+          options: JSON.stringify({ count: input.count, difficulty: input.difficulty, language: input.language, focus: input.focus }),
+        },
       });
       return { id: gen.id };
     }),

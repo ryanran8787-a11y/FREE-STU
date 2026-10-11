@@ -34,6 +34,7 @@ model Generation {
   status    String   @default("pending")
   result    String?
   error     String?
+  options   String   @default("{}")
   noteId    String
   note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
