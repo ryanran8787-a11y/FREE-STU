@@ -26,6 +26,7 @@ export type GenOptions = {
   difficulty: z.infer<typeof difficulty>;
   language: z.infer<typeof language>;
   focus: string;
+  customCount?: number;
 };
 
 function buildPrompt(type: z.infer<typeof generationType>, o: GenOptions, n: number): string {
@@ -52,15 +53,17 @@ async function runGeneration(id: string) {
       language: options.language === "zh-Hans" || options.language === "en" ? options.language : "zh-Hant",
       focus: typeof options.focus === "string" ? options.focus : "",
     };
-    // 數量按筆記字數現算，並寫回 options 供歷史顯示（放 getKey 前，沒 key 也能驗算）
+    // 數量：自訂優先，否則按筆記字數現算，並寫回 options 供歷史顯示（放 getKey 前，沒 key 也能驗算）
     const chars = gen.note.rawText.length;
+    const custom = typeof options.customCount === "number" ? Math.min(50, Math.max(1, Math.floor(options.customCount))) : undefined;
     const n =
-      gen.type === "flashcards"
+      custom ??
+      (gen.type === "flashcards"
         ? flashcardCount(chars, o.count as CountLevel)
-        : quizCount(chars, o.count as CountLevel);
+        : quizCount(chars, o.count as CountLevel));
     await db.generation.update({
       where: { id: gen.id },
-      data: { options: JSON.stringify({ ...o, resolvedCount: n, chars }) },
+      data: { options: JSON.stringify({ ...o, customCount: custom, resolvedCount: n, chars }) },
     });
     const key = await getKeyOrThrow();
     const { text, usage } = await chatCompletion({
@@ -94,6 +97,7 @@ export const generationRouter = router({
         difficulty: difficulty.default("medium"),
         language: language.default("zh-Hant"),
         focus: z.string().max(500).default(""),
+        customCount: z.number().int().min(1).max(50).optional(),
       }),
     )
     .mutation(async ({ input }) => {

@@ -116,6 +116,7 @@ export function NoteDetail({ id }: { id: string }) {
   const [level, setLevel] = useState<"easy" | "medium" | "hard">("medium");
   const [lang, setLang] = useState<"zh-Hant" | "zh-Hans" | "en">("zh-Hant");
   const [focus, setFocus] = useState("");
+  const [custom, setCustom] = useState("");
   const poll = trpc.generation.getStatus.useQuery(
     { id: pollId ?? "" },
     { enabled: !!pollId, refetchInterval: (q) => (q.state.data?.status === "done" || q.state.data?.status === "error" ? false : 2000) },
@@ -134,7 +135,16 @@ export function NoteDetail({ id }: { id: string }) {
   }, [poll.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function gen(type: "flashcards" | "quiz") {
-    const res = await start.mutateAsync({ noteId: id, type, count, difficulty: level, language: lang, focus });
+    const n = parseInt(custom, 10);
+    const res = await start.mutateAsync({
+      noteId: id,
+      type,
+      count,
+      difficulty: level,
+      language: lang,
+      focus,
+      ...(Number.isFinite(n) && n >= 1 ? { customCount: Math.min(50, n) } : {}),
+    });
     setPollId(res.id);
   }
 
@@ -155,8 +165,12 @@ export function NoteDetail({ id }: { id: string }) {
   }
 
   const chars = note.data?.rawText.length ?? 0;
-  const fcPreview = flashcardCount(chars, count);
-  const quizPreview = quizCount(chars, count);
+  const customN = (() => {
+    const n = parseInt(custom, 10);
+    return Number.isFinite(n) && n >= 1 ? Math.min(50, n) : null;
+  })();
+  const fcPreview = customN ?? flashcardCount(chars, count);
+  const quizPreview = customN ?? quizCount(chars, count);
   const levelLabel = level === "easy" ? "簡單" : level === "hard" ? "困難" : "中等";
   const live: Gen | null =
     poll.data && pollId
@@ -179,7 +193,7 @@ export function NoteDetail({ id }: { id: string }) {
 
       <div className="card flex flex-col gap-4 p-4 md:p-5">
         <h2 className="font-bold">出題設定</h2>
-        <div className="grid gap-4 md:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto]">
           <div className="flex flex-col gap-1.5">
             <span className="text-xs font-semibold text-muted">數量</span>
             <Seg value={count} onChange={setCount} options={[{ v: "less", label: "更少" }, { v: "standard", label: "標準" }, { v: "more", label: "更多" }]} />
@@ -195,6 +209,10 @@ export function NoteDetail({ id }: { id: string }) {
               <option value="zh-Hans">简体中文</option>
               <option value="en">English</option>
             </select>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-muted">自訂題數（1-50，空=公式算）</span>
+            <input value={custom} onChange={(e) => setCustom(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="空" className="field !w-24 text-xs" />
           </div>
         </div>
         <div className="flex flex-col gap-1.5">
