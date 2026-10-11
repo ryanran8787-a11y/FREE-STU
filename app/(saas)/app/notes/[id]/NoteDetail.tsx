@@ -42,7 +42,7 @@ function stripLabel(op: string): string {
 }
 
 function Quiz({ result }: { result: string }) {
-  const qs = JSON.parse(result) as { question: string; options: string[]; answer: number }[];
+  const qs = JSON.parse(result) as { question: string; options: string[]; answer: number; explanation?: string }[];
   const [picked, setPicked] = useState<Record<number, number>>({});
   const done = Object.keys(picked).length === qs.length;
   const score = qs.filter((q, qi) => picked[qi] === q.answer).length;
@@ -80,6 +80,11 @@ function Quiz({ result }: { result: string }) {
               );
             })}
           </div>
+          {picked[qi] !== undefined && q.explanation && (
+            <div className="mt-2 rounded-md bg-paper px-3 py-2 text-xs leading-relaxed text-muted">
+              <span className="font-bold text-ink">解析：</span>{q.explanation}
+            </div>
+          )}
         </div>
       ))}
       {done && (

@@ -8,7 +8,7 @@ const generationType = z.enum(["flashcards", "quiz"]);
 const PROMPTS: Record<z.infer<typeof generationType>, string> = {
   flashcards:
     "你是學習助教。根據以下筆記產生 8 張繁體中文閃卡，只回傳 JSON 陣列，每個元素 {front, back}，不要其他文字：\n\n",
-  quiz: "你是學習助教。根據以下筆記產生 5 題繁體中文單選測驗，只回傳 JSON 陣列，每個元素 {question, options(4個字串，不要加A/B/C/D編號), answer(正確選項的索引0-3)}，不要其他文字：\n\n",
+  quiz: "你是學習助教。根據以下筆記產生 5 題繁體中文單選測驗，只回傳 JSON 陣列，每個元素 {question, options(4個字串，不要加A/B/C/D編號), answer(正確選項的索引0-3), explanation(為什麼正確、一兩句話繁體中文)}，不要其他文字：\n\n",
 };
 
 async function runGeneration(id: string) {
