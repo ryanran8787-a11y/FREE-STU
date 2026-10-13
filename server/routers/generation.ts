@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { extractSourceMap, headParagraphs } from "@/lib/paras";
 import { flashcardCount, quizCount, type CountLevel } from "@/lib/counts";
 import { chatCompletion, getKeyOrThrow, logUsage, parseJsonArray } from "@/server/llm";
 import { publicProcedure, router } from "@/server/trpc";
@@ -10,14 +11,14 @@ const difficulty = z.enum(["easy", "medium", "hard"]);
 const language = z.enum(["zh-Hant", "zh-Hans", "en"]);
 
 const DIFF_WORDS: Record<string, string> = {
-  easy: "簡單（基礎記憶、定義）",
-  medium: "中等（理解應用）",
-  hard: "困難（綜合分析、陷阱題）",
+  easy: "簡單（基礎�??�、�?義�?",
+  medium: "中�?（�?�???��?",
+  hard: "?�難（�??��??�、陷?��?�?,
 };
 
 const LANG_WORDS: Record<string, string> = {
-  "zh-Hant": "繁體中文",
-  "zh-Hans": "简体中文",
+  "zh-Hant": "繁�?中�?",
+  "zh-Hans": "简体中??,
   en: "English",
 };
 
@@ -31,16 +32,16 @@ export type GenOptions = {
 
 function buildPrompt(type: z.infer<typeof generationType>, o: GenOptions, n: number | null): string {
   const lang = LANG_WORDS[o.language];
-  const focus = o.focus.trim() ? `\n主題聚焦：${o.focus.trim().slice(0, 500)}（優先圍繞這個主題出題）` : "";
+  const focus = o.focus.trim() ? `\n主�??�焦�?{o.focus.trim().slice(0, 500)}（優?��?繞這個主題出題�?` : "";
   if (type === "mindmap") {
-    const depth = o.count === "less" ? "精簡（最多2層、每層不超過4個分支）" : o.count === "more" ? "詳盡（3-4層、多分支、全覆蓋）" : "標準（3層、每層3-6個分支）";
-    return `你是學習助教。根據以下筆記產生一份${lang}心智圖大綱，${depth}，難度${DIFF_WORDS[o.difficulty]}，只回傳 Markdown（# 主題、## 分支、### 葉節點），不要程式碼圍欄、不要其他文字：${focus}\n\n`;
+    const depth = o.count === "less" ? "精簡（�?�?層、�?層�?超�?4?��??��?" : o.count === "more" ? "詳盡�?-4層、�??�支?�全覆�?�? : "標�?�?層、�?�?-6?��??��?";
+    return `你是學�??��??�根?�以下編?�段?�產?��?�?{lang}心智?�大綱�?${depth}，難�?{DIFF_WORDS[o.difficulty]}?�只?�傳 Markdown�? 主�???# ?�支??## ?��?點�?，�?要�?式碼?��??��?要其他�?字。�?要�?每�?## / ### 標�??�尾必�?標註它�??��?段落編�?，形如�?# ??���?? [p3,p7]?��?編�??�能?��??�給?��?，未依�?任�?段落就�?要�?�?{focus}\n\n`;
   }
   const count = n ?? 5;
   if (type === "flashcards") {
-    return `你是學習助教。根據以下筆記產生 ${count} 張${lang}閃卡，難度${DIFF_WORDS[o.difficulty]}，只回傳 JSON 陣列，每個元素 {front, back}，不要其他文字：${focus}\n\n`;
+    return `你是學�??��??�根?�以下�?記產??${count} �?{lang}?�卡，難�?{DIFF_WORDS[o.difficulty]}，只?�傳 JSON ???，�??��?�?{front, back}，�?要其他�?字�?${focus}\n\n`;
   }
-  return `你是學習助教。根據以下筆記產生 ${count} 題${lang}單選測驗，難度${DIFF_WORDS[o.difficulty]}，只回傳 JSON 陣列，每個元素 {question, options(4個字串，不要加A/B/C/D編號), answer(正確選項的索引0-3), explanation(為什麼正確、一兩句話${lang})}，不要其他文字：${focus}\n\n`;
+  return `你是學�??��??�根?�以下�?記產??${count} �?{lang}?�選測�?，難�?{DIFF_WORDS[o.difficulty]}，只?�傳 JSON ???，�??��?�?{question, options(4?��?串�?不�??�A/B/C/D編�?), answer(�?��?��??�索�?-3), explanation(?��?麼正確、�??�句�?{lang})}，�?要其他�?字�?${focus}\n\n`;
 }
 
 async function runGeneration(id: string) {
@@ -58,8 +59,7 @@ async function runGeneration(id: string) {
       language: options.language === "zh-Hans" || options.language === "en" ? options.language : "zh-Hant",
       focus: typeof options.focus === "string" ? options.focus : "",
     };
-    // 數量：自訂優先，否則按筆記字數現算（心智圖不計數，用層級描述），並寫回 options 供歷史顯示
-    const chars = gen.note.rawText.length;
+    // ?��?：自訂優?��??��??��?記�??�現算�?心智?��?計數，用層�??�述）�?並寫??options 供歷?�顯�?    const chars = gen.note.rawText.length;
     const custom = typeof options.customCount === "number" ? Math.min(50, Math.max(1, Math.floor(options.customCount))) : undefined;
     const n =
       gen.type === "mindmap"
@@ -73,24 +73,44 @@ async function runGeneration(id: string) {
       data: { options: JSON.stringify({ ...o, customCount: custom, resolvedCount: n, chars }) },
     });
     const key = await getKeyOrThrow();
+    // 心智?�餵編�?段落，其他沿?��??�截??    const paras = gen.type === "mindmap" ? headParagraphs(gen.note.rawText) : [];
+    const context =
+      gen.type === "mindmap"
+        ? paras.map((p) => `[${p.id}] ${p.text}`).join("\n")
+        : gen.note.rawText.slice(0, 12000);
     const { text, usage } = await chatCompletion({
       baseUrl: key.baseUrl,
       apiKey: key.apiKey,
       model: key.model,
-      messages: [{ role: "user", content: buildPrompt(gen.type as "flashcards" | "quiz" | "mindmap", o, n) + gen.note.rawText.slice(0, 12000) }],
+      messages: [{ role: "user", content: buildPrompt(gen.type as "flashcards" | "quiz" | "mindmap", o, n) + context }],
       temperature: 0.5,
     });
     await logUsage(gen.type, key.model, usage);
-    // 心智圖存 Markdown 原文，其他走 JSON 解析
-    const stored = gen.type === "mindmap" ? text.trim() : JSON.stringify(parseJsonArray(text));
+    // 心智?��??��??�、�? ID?��?乾淨 md + ?��?；其他走 JSON �??
+    if (gen.type === "mindmap") {
+      const { cleaned, sourceMap } = extractSourceMap(
+        text.trim(),
+        new Set(paras.map((p) => p.id)),
+      );
+      await db.generation.update({
+        where: { id },
+        data: {
+          status: "done",
+          result: cleaned,
+          options: JSON.stringify({ ...o, customCount: custom, resolvedCount: n, chars, sourceMap }),
+        },
+      });
+      return;
+    }
+    const items = parseJsonArray(text);
     await db.generation.update({
       where: { id },
-      data: { status: "done", result: stored },
+      data: { status: "done", result: JSON.stringify(items) },
     });
   } catch (e) {
     await db.generation.update({
       where: { id },
-      data: { status: "error", error: e instanceof Error ? e.message.slice(0, 500) : "未知錯誤" },
+      data: { status: "error", error: e instanceof Error ? e.message.slice(0, 500) : "?�知?�誤" },
     });
   }
 }
@@ -110,7 +130,7 @@ export const generationRouter = router({
     )
     .mutation(async ({ input }) => {
       const note = await db.note.findUnique({ where: { id: input.noteId } });
-      if (!note) throw new Error("找不到筆記");
+      if (!note) throw new Error("?��??��?�?);
       const gen = await db.generation.create({
         data: {
           noteId: input.noteId,
@@ -123,8 +143,7 @@ export const generationRouter = router({
     }),
 
   getStatus: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
-    // 窮人 queue：第一個 poll 到 pending 的請求負責執行（CAS 搶鎖），其他人等結果。
-    const claimed = await db.generation.updateMany({
+    // 窮人 queue：第一??poll ??pending ?��?求�?責執行�?CAS ?��?）�??��?人�?結�???    const claimed = await db.generation.updateMany({
       where: { id: input.id, status: "pending" },
       data: { status: "running" },
     });
@@ -132,7 +151,7 @@ export const generationRouter = router({
       await runGeneration(input.id);
     }
     const gen = await db.generation.findUnique({ where: { id: input.id } });
-    if (!gen) throw new Error("找不到任務");
-    return { status: gen.status, result: gen.result, error: gen.error };
+    if (!gen) throw new Error("?��??�任??);
+    return { status: gen.status, result: gen.result, error: gen.error, options: gen.options };
   }),
 });

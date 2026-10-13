@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CardIcon, QuizIcon, SparkIcon } from "@/app/icons";
 import { flashcardCount, quizCount } from "@/lib/counts";
+import { splitParagraphs } from "@/lib/paras";
 import { trpc } from "@/lib/trpc";
 import { MindmapView, countMindmapNodes } from "./MindmapView";
 
@@ -98,8 +99,8 @@ function Quiz({ result }: { result: string }) {
   );
 }
 
-function GenView({ result, type }: { result: string; type: string }) {
-  if (type === "mindmap") return <MindmapView result={result} />;
+function GenView({ result, type, sources, paras }: { result: string; type: string; sources: Record<string, string[]>; paras: { id: string; text: string }[] }) {
+  if (type === "mindmap") return <MindmapView result={result} sources={sources} paras={paras} />;
   try {
     const arr = JSON.parse(result) as Record<string, unknown>[];
     if (arr.length > 0 && "options" in arr[0]) return <Quiz result={result} />;
@@ -262,7 +263,12 @@ export function NoteDetail({ id }: { id: string }) {
       {live?.status === "done" && live.result && (
         <div className="rise">
           <h2 className="mb-2 flex items-center gap-1.5 font-bold"><SparkIcon size={16} /> 剛出爐</h2>
-          <GenView result={live.result} type={live.type} />
+          <GenView
+            result={live.result}
+            type={live.type}
+            sources={readSourceMap(poll.data?.options)}
+            paras={note.data ? splitParagraphs(note.data.rawText) : []}
+          />
         </div>
       )}
 
@@ -271,10 +277,23 @@ export function NoteDetail({ id }: { id: string }) {
           generations={(note.data.generations ?? []).filter((g) => g.status === "done" && g.result)}
           selectedId={selectedId}
           onSelect={setSelectedId}
+          paras={splitParagraphs(note.data.rawText)}
         />
       )}
     </div>
   );
+}
+
+function readSourceMap(optionsJson: string | null | undefined): Record<string, string[]> {
+  try {
+    const o = JSON.parse(optionsJson || "{}") as { sourceMap?: unknown };
+    if (o.sourceMap && typeof o.sourceMap === "object") {
+      return o.sourceMap as Record<string, string[]>;
+    }
+  } catch {
+    /* 舊資料沒有映射 */
+  }
+  return {};
 }
 
 function countItems(result: string, type: string): number {
@@ -291,10 +310,12 @@ function HistoryArea({
   generations,
   selectedId,
   onSelect,
+  paras,
 }: {
-  generations: { id: string; type: string; result: string | null; createdAt: Date }[];
+  generations: { id: string; type: string; result: string | null; options: string; createdAt: Date }[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  paras: { id: string; text: string }[];
 }) {
   if (generations.length === 0) return null;
   const selected = generations.find((g) => g.id === selectedId) ?? generations[0];
@@ -318,7 +339,7 @@ function HistoryArea({
           );
         })}
       </div>
-      <GenView key={selected.id} result={selected.result!} type={selected.type} />
+      <GenView key={selected.id} result={selected.result!} type={selected.type} sources={readSourceMap(selected.options)} paras={paras} />
     </div>
   );
 }
