@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { CardIcon, QuizIcon, SparkIcon } from "@/app/icons";
 import { flashcardCount, quizCount } from "@/lib/counts";
 import { trpc } from "@/lib/trpc";
+import { MindmapView, countMindmapNodes } from "./MindmapView";
 
-type Gen = { id: string; status: string; result: string | null; error: string | null };
+type Gen = { id: string; type: string; status: string; result: string | null; error: string | null };
 
 function Flashcards({ result }: { result: string }) {
   const cards = JSON.parse(result) as { front: string; back: string }[];
@@ -97,7 +98,8 @@ function Quiz({ result }: { result: string }) {
   );
 }
 
-function GenView({ result }: { result: string }) {
+function GenView({ result, type }: { result: string; type: string }) {
+  if (type === "mindmap") return <MindmapView result={result} />;
   try {
     const arr = JSON.parse(result) as Record<string, unknown>[];
     if (arr.length > 0 && "options" in arr[0]) return <Quiz result={result} />;
@@ -107,10 +109,13 @@ function GenView({ result }: { result: string }) {
   }
 }
 
+const TYPE_LABEL: Record<string, string> = { flashcards: "閃卡", quiz: "測驗", mindmap: "心智圖" };
+
 export function NoteDetail({ id }: { id: string }) {
   const note = trpc.note.get.useQuery({ id });
   const start = trpc.generation.start.useMutation();
   const [pollId, setPollId] = useState<string | null>(null);
+  const [liveType, setLiveType] = useState("flashcards");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [count, setCount] = useState<"less" | "standard" | "more">("standard");
   const [level, setLevel] = useState<"easy" | "medium" | "hard">("medium");
@@ -134,7 +139,7 @@ export function NoteDetail({ id }: { id: string }) {
     }
   }, [poll.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function gen(type: "flashcards" | "quiz") {
+  async function gen(type: "flashcards" | "quiz" | "mindmap") {
     const n = parseInt(custom, 10);
     const res = await start.mutateAsync({
       noteId: id,
@@ -145,6 +150,7 @@ export function NoteDetail({ id }: { id: string }) {
       focus,
       ...(Number.isFinite(n) && n >= 1 ? { customCount: Math.min(50, n) } : {}),
     });
+    setLiveType(type);
     setPollId(res.id);
   }
 
@@ -174,7 +180,7 @@ export function NoteDetail({ id }: { id: string }) {
   const levelLabel = level === "easy" ? "簡單" : level === "hard" ? "困難" : "中等";
   const live: Gen | null =
     poll.data && pollId
-      ? { id: pollId, status: poll.data.status, result: poll.data.result, error: poll.data.error }
+      ? { id: pollId, type: liveType, status: poll.data.status, result: poll.data.result, error: poll.data.error }
       : null;
   const busy = live && live.status !== "done" && live.status !== "error";
 
@@ -219,7 +225,7 @@ export function NoteDetail({ id }: { id: string }) {
           <span className="text-xs font-semibold text-muted">主題聚焦（可空：只圍繞這個主題出）</span>
           <textarea value={focus} onChange={(e) => setFocus(e.target.value)} rows={2} placeholder="例如：只考監護與輔助宣告的部分" className="field resize-y text-sm" />
         </div>
-        <div className="grid gap-3 md:grid-cols-2">
+        <div className="grid gap-3 md:grid-cols-3">
           <button onClick={() => gen("flashcards")} disabled={start.isPending || !!busy} className="card group flex items-center gap-4 p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#F4F4F5]"><CardIcon size={20} /></span>
             <span>
@@ -232,6 +238,13 @@ export function NoteDetail({ id }: { id: string }) {
             <span>
               <span className="block font-semibold group-hover:text-accent">生成測驗</span>
               <span className="block text-xs text-muted">{chars ? `${quizPreview} 題單選` : "…"} · {levelLabel}</span>
+            </span>
+          </button>
+          <button onClick={() => gen("mindmap")} disabled={start.isPending || !!busy} className="card group flex items-center gap-4 p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#F4F4F5]"><SparkIcon size={20} /></span>
+            <span>
+              <span className="block font-semibold group-hover:text-accent">生成心智圖</span>
+              <span className="block text-xs text-muted">互動圖 · {count === "less" ? "精簡" : count === "more" ? "詳盡" : "標準"}</span>
             </span>
           </button>
         </div>
@@ -249,7 +262,7 @@ export function NoteDetail({ id }: { id: string }) {
       {live?.status === "done" && live.result && (
         <div className="rise">
           <h2 className="mb-2 flex items-center gap-1.5 font-bold"><SparkIcon size={16} /> 剛出爐</h2>
-          <GenView result={live.result} />
+          <GenView result={live.result} type={live.type} />
         </div>
       )}
 
@@ -264,7 +277,8 @@ export function NoteDetail({ id }: { id: string }) {
   );
 }
 
-function countItems(result: string): number {
+function countItems(result: string, type: string): number {
+  if (type === "mindmap") return countMindmapNodes(result);
   try {
     const arr = JSON.parse(result) as unknown[];
     return Array.isArray(arr) ? arr.length : 0;
@@ -296,15 +310,15 @@ function HistoryArea({
               onClick={() => onSelect(g.id)}
               className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-paper ${active ? "bg-paper font-semibold" : ""}`}
             >
-              <span className="text-muted">{g.type === "flashcards" ? <CardIcon size={16} /> : <QuizIcon size={16} />}</span>
-              <span>{g.type === "flashcards" ? "閃卡" : "測驗"}</span>
-              <span className="text-xs text-muted">{countItems(g.result!)} 題</span>
+              <span className="text-muted">{g.type === "flashcards" ? <CardIcon size={16} /> : g.type === "mindmap" ? <SparkIcon size={16} /> : <QuizIcon size={16} />}</span>
+              <span>{TYPE_LABEL[g.type] ?? g.type}</span>
+              <span className="text-xs text-muted">{g.type === "mindmap" ? `${countItems(g.result!, g.type)} 節點` : `${countItems(g.result!, g.type)} 題`}</span>
               <span className="ml-auto text-xs text-muted">{new Date(g.createdAt).toLocaleString("zh-TW")}</span>
             </button>
           );
         })}
       </div>
-      <GenView key={selected.id} result={selected.result!} />
+      <GenView key={selected.id} result={selected.result!} type={selected.type} />
     </div>
   );
 }
