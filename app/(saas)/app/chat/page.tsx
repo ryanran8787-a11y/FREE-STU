@@ -11,8 +11,10 @@ const SUGGESTIONS = ["幫我列出這段的 3 個重點", "用白話解釋一次
 export default function ChatPage() {
   const [input, setInput] = useState("");
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [noteId, setNoteId] = useState("");
   const ask = trpc.chat.ask.useMutation();
   const keyStatus = trpc.user.getKeyStatus.useQuery();
+  const notes = trpc.note.list.useQuery();
 
   async function send(text?: string) {
     const message = (text ?? input).trim();
@@ -20,7 +22,7 @@ export default function ChatPage() {
     setInput("");
     setMsgs((m) => [...m, { role: "user", text: message }]);
     try {
-      const res = await ask.mutateAsync({ message });
+      const res = await ask.mutateAsync({ message, noteId: noteId || undefined });
       setMsgs((m) => [...m, { role: "ai", text: res.reply }]);
     } catch (e) {
       setMsgs((m) => [
@@ -46,6 +48,17 @@ export default function ChatPage() {
           填一個，免費的 Gemini 就能用。
         </div>
       )}
+
+      <div className="card flex flex-wrap items-center gap-2 p-3 text-sm">
+        <span className="font-semibold">參照筆記：</span>
+        <select value={noteId} onChange={(e) => setNoteId(e.target.value)} className="field !w-auto flex-1 text-xs">
+          <option value="">不指定（純聊天）</option>
+          {notes.data?.map((n) => (
+            <option key={n.id} value={n.id}>{n.title}</option>
+          ))}
+        </select>
+        {noteId && <span className="text-xs text-muted">助教會引用這份筆記回答</span>}
+      </div>
 
       <div className="card flex min-h-72 flex-col gap-4 p-4 md:p-5">
         {msgs.length === 0 && (
