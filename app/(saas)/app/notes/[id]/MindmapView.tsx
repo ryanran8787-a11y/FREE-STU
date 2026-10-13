@@ -35,16 +35,22 @@ export function MindmapView({
     mmRef.current?.destroy();
     const svg = svgRef.current;
     mmRef.current = Markmap.create(svg, { autoFit: true, duration: 300 }, root);
+    // capture 期監聽：markmap 內部會 stopPropagation，bubble 期到不了 svg。
+    // 只讀直屬 foreignObject 的文字（不含子孫），才能精確對上標題。
     const onClick = (e: MouseEvent) => {
-      const g = (e.target as Element).closest?.("g.markmap-node");
+      const el = e.target as Element | null;
+      const g = el?.closest?.("g.markmap-node");
       if (!g) return;
-      const text = (g.textContent ?? "").trim().replace(/\s+/g, " ");
-      const hit = titles.current.find((t) => text === t || text.startsWith(t) || t.startsWith(text.slice(0, 40)));
-      setSelected(hit ?? null);
+      const fo = g.querySelector(":scope > foreignObject");
+      const label = ((fo?.textContent ?? g.textContent ?? "") as string).trim().replace(/\s+/g, " ");
+      if (!label) return;
+      const hit = titles.current.find((t) => label === t || label.startsWith(t) || t.startsWith(label));
+      if (!hit) return;
+      setSelected((prev) => (prev === hit ? null : hit));
     };
-    svg.addEventListener("click", onClick);
+    svg.addEventListener("click", onClick, true);
     return () => {
-      svg.removeEventListener("click", onClick);
+      svg.removeEventListener("click", onClick, true);
       mmRef.current?.destroy();
       mmRef.current = null;
     };
