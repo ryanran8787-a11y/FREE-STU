@@ -247,9 +247,9 @@ export function NoteDetail({ id }: { id: string }) {
         <h1 className="truncate text-lg font-extrabold tracking-tight">{note.data?.title ?? "讀取中…"}</h1>
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[250px_minmax(0,1fr)_300px]">
+      <div className="grid items-start gap-4 lg:grid-cols-[250px_minmax(0,1fr)_300px]">
         {/* 左：來源 */}
-        <div className="order-3 xl:order-1 xl:sticky xl:top-16">
+        <div className="order-3 lg:order-1 lg:sticky lg:top-16">
           {note.data ? (
             <SourcesPanel title={note.data.title} rawText={note.data.rawText} />
           ) : (
@@ -258,7 +258,7 @@ export function NoteDetail({ id }: { id: string }) {
         </div>
 
         {/* 中：對話 + 結果 */}
-        <div className="order-1 flex min-w-0 flex-col gap-4 xl:order-2">
+        <div className="order-1 flex min-w-0 flex-col gap-4 lg:order-2">
           <div className="card p-4">
             <h2 className="mb-2 text-sm font-bold">問這份筆記</h2>
             <ChatBox noteId={id} paras={parasMap} showSuggestions={false} />
@@ -312,7 +312,7 @@ export function NoteDetail({ id }: { id: string }) {
         </div>
 
         {/* 右：Studio */}
-        <div className="order-2 flex flex-col gap-4 xl:order-3 xl:sticky xl:top-16">
+        <div className="order-2 flex flex-col gap-4 lg:order-3 lg:sticky lg:top-16">
           <div className="card flex flex-col gap-3 p-4">
             <h2 className="text-sm font-bold">Studio</h2>
             <div className="flex flex-col gap-1.5">
