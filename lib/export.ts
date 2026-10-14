@@ -1,5 +1,4 @@
 // 純前端匯出：下載檔案，不經後端。
-import { toPng } from "html-to-image";
 
 export function downloadText(filename: string, text: string, mime = "text/markdown;charset=utf-8") {
   const blob = new Blob([text], { type: mime });
@@ -51,16 +50,6 @@ export function serializeSvg(svg: SVGSVGElement): string {
   bg.setAttribute("fill", "#ffffff");
   clone.insertBefore(bg, clone.firstChild);
   return new XMLSerializer().serializeToString(clone);
-}
-
-export async function svgToPngBlob(svg: SVGSVGElement): Promise<Blob> {
-  const dataUrl = await toPng(svg as unknown as HTMLElement, {
-    backgroundColor: "#ffffff",
-    pixelRatio: 2,
-    cacheBust: true,
-  });
-  const res = await fetch(dataUrl);
-  return await res.blob();
 }
 
 export function downloadBlob(filename: string, blob: Blob) {

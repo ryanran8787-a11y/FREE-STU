@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Transformer } from "markmap-lib";
 import { Markmap } from "markmap-view";
-import { downloadBlob, downloadText, safeName, serializeSvg, svgToPngBlob } from "@/lib/export";
+import { downloadBlob, downloadText, safeName, serializeSvg } from "@/lib/export";
 import type { Para } from "@/lib/paras";
 
 const transformer = new Transformer();
@@ -88,12 +88,32 @@ export function MindmapView({
   async function exportPng() {
     if (!svgRef.current) return;
     setExportMsg("轉 PNG 中…");
+    const { toPng } = await import("html-to-image");
+    const shot = async (pixelRatio: number) => {
+      const dataUrl = await toPng(svgRef.current as unknown as HTMLElement, {
+        backgroundColor: "#ffffff",
+        pixelRatio,
+        cacheBust: true,
+      });
+      return await (await fetch(dataUrl)).blob();
+    };
     try {
-      const blob = await svgToPngBlob(svgRef.current);
-      downloadBlob(`${safeName(title)}-心智圖.png`, blob);
-      setExportMsg("");
+      try {
+        downloadBlob(`${safeName(title)}-心智圖.png`, await shot(2));
+        setExportMsg("");
+      } catch {
+        // 圖太大 2x 會爆 canvas 上限，降到 1x 再試
+        downloadBlob(`${safeName(title)}-心智圖.png`, await shot(1));
+        setExportMsg("圖太大，已降為 1x 解析度。要無限放大請用 SVG。");
+      }
     } catch {
-      setExportMsg("PNG 匯出失敗（瀏覽器不支援 SVG 外部渲染）");
+      // 還是太大：保底改存 SVG（向量無限放大不失真）
+      try {
+        downloadText(`${safeName(title)}-心智圖.svg`, serializeSvg(svgRef.current), "image/svg+xml;charset=utf-8");
+        setExportMsg("圖太大 PNG 裝不下，已改存 SVG（向量可無限放大）。");
+      } catch {
+        setExportMsg("匯出失敗，改用 SVG 或 MD 試試。");
+      }
     }
   }
 
@@ -110,7 +130,7 @@ export function MindmapView({
           <span className="ml-auto flex items-center gap-1">
             <button onClick={exportMd} className="rounded border border-line px-2 py-0.5 font-semibold hover:border-muted">MD</button>
             <button onClick={exportSvg} className="rounded border border-line px-2 py-0.5 font-semibold hover:border-muted">SVG</button>
-            <button onClick={exportPng} className="rounded border border-line px-2 py-0.5 font-semibold hover:border-muted">PNG</button>
+            <button onClick={exportPng} title="圖太大會自動降解析度，終極保底改存 SVG" className="rounded border border-line px-2 py-0.5 font-semibold hover:border-muted">PNG</button>
           </span>
           <button
             onClick={() => setSelftest((v) => !v)}
