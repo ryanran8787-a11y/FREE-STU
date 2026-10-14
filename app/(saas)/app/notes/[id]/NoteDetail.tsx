@@ -247,7 +247,7 @@ export function NoteDetail({ id }: { id: string }) {
         <h1 className="truncate text-lg font-extrabold tracking-tight">{note.data?.title ?? "讀取中…"}</h1>
       </div>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[250px_minmax(0,1fr)_300px]">
+      <div className="grid items-start gap-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
         {/* 左：來源 */}
         <div className="order-3 lg:order-1 lg:sticky lg:top-16">
           {note.data ? (
