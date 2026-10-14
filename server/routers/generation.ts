@@ -35,7 +35,7 @@ function buildPrompt(type: z.infer<typeof generationType>, o: GenOptions, n: num
   const focus = o.focus.trim() ? `\n主題聚焦：${o.focus.trim().slice(0, 500)}（優先圍繞這個主題出題）` : "";
   if (type === "mindmap") {
     const depth = o.count === "less" ? "精簡（最多2層、每層不超過4個分支）" : o.count === "more" ? "詳盡（3-4層、多分支、全覆蓋）" : "標準（3層、每層3-6個分支）";
-    return `你是學習助教。根據以下編號段落產生一份${lang}心智圖大綱，${depth}，難度${DIFF_WORDS[o.difficulty]}。只回傳 Markdown（# 主題、## 分支、### 葉節點），不要程式碼圍欄、不要其他文字。重要：每個 ## / ### 標題末尾必須標註它依據的段落編號，形如「## 監護宣告 [p3,p7]」，編號只能用下面給出的，未依據任何段落就不要標：${focus}\n\n`;
+    return `你是學習助教。根據以下編號段落產生一份${lang}心智圖大綱，${depth}，難度${DIFF_WORDS[o.difficulty]}。只回傳 Markdown（# 主題、## 分支、### 葉節點），不要程式碼圍欄、不要其他文字。重要：每個 ## / ### 標題末尾必須標註它依據的段落編號，形如「## 監護宣告 [p3,p7]」或區間「## 行為能力 [p6-p7]」，編號只能用下面給出的，未依據任何段落就不要標：${focus}\n\n`;
   }
   const count = n ?? 5;
   if (type === "flashcards") {

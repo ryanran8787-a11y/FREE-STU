@@ -32,7 +32,7 @@ export function headParagraphs(rawText: string, maxChars = 12000): Para[] {
   return out;
 }
 
-/** 心智圖後處理：抽標題末的 [p1,p5] 引用，驗 ID 合法性，strip 後回傳乾淨 md + 映射 */
+/** 心智圖後處理：抽標題末的 [p1,p5] / [p6-p7] 引用，驗 ID 合法性，strip 後回傳乾淨 md + 映射 */
 export function extractSourceMap(
   md: string,
   validIds: Set<string>,
@@ -41,15 +41,24 @@ export function extractSourceMap(
   const cleaned = md
     .split("\n")
     .map((line) => {
-      const m = line.match(/^(#{1,6}\s+)(.*?)(\s*\[([pP]?\d+(?:\s*,\s*[pP]?\d+)*)\])\s*$/);
+      const m = line.match(/^(#{1,6}\s+)(.*?)(\s*\[([pP]?\d+(?:\s*[-,]\s*[pP]?\d+)*)\])\s*$/);
       if (!m) return line;
       const title = m[2].trim();
-      const ids = m[4]
-        .split(",")
-        .map((s) => s.trim().replace(/^[pP]/, ""))
-        .map((s) => `p${s}`)
-        .filter((id) => validIds.has(id));
-      if (ids.length > 0) sourceMap[title] = [...new Set(ids)];
+      const ids: string[] = [];
+      for (const part of m[4].split(",")) {
+        const range = part.trim().match(/^[pP]?(\d+)\s*-\s*[pP]?(\d+)$/);
+        if (range) {
+          let a = parseInt(range[1], 10);
+          let b = parseInt(range[2], 10);
+          if (a > b) [a, b] = [b, a];
+          for (let n = a; n <= b && ids.length < 50; n++) ids.push(`p${n}`);
+        } else {
+          const num = part.trim().match(/^[pP]?(\d+)$/);
+          if (num) ids.push(`p${num[1]}`);
+        }
+      }
+      const valid = [...new Set(ids.filter((id) => validIds.has(id)))];
+      if (valid.length > 0) sourceMap[title] = valid;
       return `${m[1]}${title}`;
     })
     .join("\n");

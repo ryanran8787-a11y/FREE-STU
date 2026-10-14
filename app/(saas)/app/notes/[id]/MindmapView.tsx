@@ -29,6 +29,7 @@ export function MindmapView({
   const [showList, setShowList] = useState(false);
   const [titles, setTitles] = useState<string[]>([]);
   const titlesRef = useRef<string[]>([]);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!svgRef.current) return;
@@ -64,6 +65,10 @@ export function MindmapView({
   const paraById = new Map(paras.map((p) => [p.id, p.text]));
   const refs = selected ? (sources[selected] ?? []) : [];
 
+  useEffect(() => {
+    if (selected) panelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [selected]);
+
   return (
     <div className="flex flex-col gap-2">
       <div className="card overflow-hidden">
@@ -89,7 +94,7 @@ export function MindmapView({
         )}
       </div>
       {selected && (
-        <div className="card rise p-4">
+        <div ref={panelRef} className="card rise scroll-mt-24 p-4">
           <div className="flex items-center gap-2">
             <span className="text-sm font-bold">{selected}</span>
             {refs.length === 0 ? (
