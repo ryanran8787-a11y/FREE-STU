@@ -54,7 +54,7 @@ export function serializeSvg(svg: SVGSVGElement): string {
 }
 
 export async function svgToPngBlob(svg: SVGSVGElement): Promise<Blob> {
-  const dataUrl = await toPng(svg, {
+  const dataUrl = await toPng(svg as unknown as HTMLElement, {
     backgroundColor: "#ffffff",
     pixelRatio: 2,
     cacheBust: true,
