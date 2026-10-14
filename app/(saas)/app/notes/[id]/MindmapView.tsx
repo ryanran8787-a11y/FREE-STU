@@ -26,11 +26,15 @@ export function MindmapView({
   const svgRef = useRef<SVGSVGElement>(null);
   const mmRef = useRef<Markmap | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  const titles = useRef<string[]>([]);
+  const [showList, setShowList] = useState(false);
+  const [titles, setTitles] = useState<string[]>([]);
+  const titlesRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (!svgRef.current) return;
-    titles.current = headingsOf(result);
+    const found = headingsOf(result);
+    titlesRef.current = found;
+    setTitles(found);
     const { root } = transformer.transform(result);
     mmRef.current?.destroy();
     const svg = svgRef.current;
@@ -40,11 +44,12 @@ export function MindmapView({
     const onClick = (e: MouseEvent) => {
       const el = e.target as Element | null;
       const g = el?.closest?.("g.markmap-node");
+      if (typeof console !== "undefined") console.debug("[mindmap] click", (el as Element)?.tagName, !!g);
       if (!g) return;
       const fo = g.querySelector(":scope > foreignObject");
       const label = ((fo?.textContent ?? g.textContent ?? "") as string).trim().replace(/\s+/g, " ");
       if (!label) return;
-      const hit = titles.current.find((t) => label === t || label.startsWith(t) || t.startsWith(label));
+      const hit = titlesRef.current.find((t) => label === t || label.startsWith(t) || t.startsWith(label));
       if (!hit) return;
       setSelected((prev) => (prev === hit ? null : hit));
     };
@@ -63,7 +68,25 @@ export function MindmapView({
     <div className="flex flex-col gap-2">
       <div className="card overflow-hidden">
         <svg ref={svgRef} className="h-[420px] w-full bg-card md:h-[520px]" />
-        <p className="border-t border-line px-4 py-2 text-xs text-muted">可縮放 · 點節點收合/展開，再點一次看來源</p>
+        <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2 text-xs text-muted">
+          <span>可縮放 · 點圖上節點收合/看來源</span>
+          <button onClick={() => setShowList((v) => !v)} className="ml-auto font-semibold text-accent hover:underline">
+            {showList ? "收起節點列表" : `節點列表（${titles.length}）▾`}
+          </button>
+        </div>
+        {showList && (
+          <div className="flex max-h-44 flex-wrap gap-1.5 overflow-y-auto border-t border-line p-3">
+            {titles.map((t) => (
+              <button
+                key={t}
+                onClick={() => setSelected((prev) => (prev === t ? null : t))}
+                className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${selected === t ? "border-ink bg-ink text-white" : "border-line hover:border-muted"}`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       {selected && (
         <div className="card rise p-4">
