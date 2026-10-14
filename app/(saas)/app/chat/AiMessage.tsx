@@ -4,7 +4,7 @@ import { useState } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
-/** 把正文裡的 [p12] 轉成可點的引用 chip（跳過程式碼區塊） */
+/** 把正文裡的 [p12] / [s3] 轉成可點的引用 chip（跳過程式碼區塊） */
 function rehypeParaRefs() {
   return (tree: any) => {
     const walk = (node: any) => {
@@ -12,18 +12,19 @@ function rehypeParaRefs() {
       const out: any[] = [];
       for (const child of node.children) {
         if (child.type === "text") {
-          const re = /\[p(\d+)\]/g;
+          const re = /\[[ps](\d+)\]/g;
           let last = 0;
           let m: RegExpExecArray | null;
           let matched = false;
           while ((m = re.exec(child.value))) {
             matched = true;
             if (m.index > last) out.push({ type: "text", value: child.value.slice(last, m.index) });
+            const full = m[0].startsWith("[s") ? `s${m[1]}` : `p${m[1]}`;
             out.push({
               type: "element",
               tagName: "cite",
-              properties: { dataPara: m[1], className: ["cite-chip"] },
-              children: [{ type: "text", value: `p${m[1]}` }],
+              properties: { dataPara: full, className: ["cite-chip"] },
+              children: [{ type: "text", value: full }],
             });
             last = m.index + m[0].length;
           }
@@ -57,7 +58,7 @@ const mdComponents = {
   td: (props: any) => <td className="border border-line px-2 py-1" {...props} />,
 };
 
-export function AiMessage({ text, paras }: { text: string; paras: Map<string, string> }) {
+export function AiMessage({ text, paras, sources }: { text: string; paras: Map<string, string>; sources: Map<string, { title: string; text: string }> }) {
   const [open, setOpen] = useState<Set<string>>(new Set());
 
   function onClick(e: React.MouseEvent) {
@@ -72,6 +73,14 @@ export function AiMessage({ text, paras }: { text: string; paras: Map<string, st
     });
   }
 
+  function lookup(id: string): { label: string; body: string } | null {
+    const s = sources.get(id);
+    if (s) return { label: `[${id}]《${s.title}》`, body: s.text };
+    const t = paras.get(id.replace(/^[ps]/, ""));
+    if (t !== undefined) return { label: `[${id}]`, body: t };
+    return null;
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <div onClick={onClick} className="max-w-[90%] whitespace-pre-wrap rounded-lg rounded-bl-sm border border-line bg-paper px-3.5 py-2.5 text-sm leading-relaxed">
@@ -79,15 +88,16 @@ export function AiMessage({ text, paras }: { text: string; paras: Map<string, st
           {text}
         </Markdown>
       </div>
-      {[...open].map(
-        (id) =>
-          paras.has(id) && (
-            <div key={id} className="max-w-[90%] rounded-md bg-paper px-3 py-2 text-xs leading-relaxed">
-              <span className="mr-2 font-mono font-bold text-muted">[p{id}]</span>
-              {paras.get(id)}
-            </div>
-          ),
-      )}
+      {[...open].map((id) => {
+        const found = lookup(id);
+        if (!found) return null;
+        return (
+          <div key={id} className="max-w-[90%] rounded-md bg-paper px-3 py-2 text-xs leading-relaxed">
+            <span className="mr-2 font-mono font-bold text-muted">{found.label}</span>
+            {found.body}
+          </div>
+        );
+      })}
     </div>
   );
 }

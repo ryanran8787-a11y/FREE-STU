@@ -36,11 +36,13 @@ export default function ChatPage() {
         <span className="font-semibold">參照筆記：</span>
         <select value={noteId} onChange={(e) => setNoteId(e.target.value)} className="field !w-auto flex-1 text-xs">
           <option value="">不指定（純聊天）</option>
+          <option value="*">全部筆記（跨筆記檢索）</option>
           {notes.data?.map((n) => (
             <option key={n.id} value={n.id}>{n.title}</option>
           ))}
         </select>
-        {noteId && <span className="text-xs text-muted">助教會引用這份筆記回答</span>}
+        {noteId === "*" && <span className="text-xs text-muted">自動從所有筆記找相關段落</span>}
+        {noteId && noteId !== "*" && <span className="text-xs text-muted">助教會引用這份筆記回答</span>}
       </div>
 
       <div className="card p-4 md:p-5">

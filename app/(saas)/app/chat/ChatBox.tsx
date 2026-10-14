@@ -24,6 +24,7 @@ export function ChatBox({
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [ctrl, setCtrl] = useState<AbortController | null>(null);
+  const [sources, setSources] = useState<Map<string, { title: string; text: string }>>(new Map());
 
   async function send(text?: string) {
     const message = (text ?? input).trim();
@@ -59,8 +60,16 @@ export function ChatBox({
             const t = line.trim();
             if (!t.startsWith("data:")) continue;
             try {
-              const evt = JSON.parse(t.slice(5).trim()) as { delta?: string; error?: string };
+              const evt = JSON.parse(t.slice(5).trim()) as { delta?: string; error?: string; sources?: { ref: string; noteTitle: string; text: string }[] };
               if (evt.error) throw new Error(evt.error);
+              if (evt.sources) {
+                const list = evt.sources;
+                setSources((prev) => {
+                  const next = new Map(prev);
+                  for (const s of list) next.set(s.ref, { title: s.noteTitle, text: s.text });
+                  return next;
+                });
+              }
               if (evt.delta) {
                 acc += evt.delta;
                 const snapshot = acc;
@@ -124,7 +133,7 @@ export function ChatBox({
             </div>
           ) : (
             <div key={i} className="rise flex justify-start">
-              <AiMessage text={m.text} paras={paras} />
+              <AiMessage text={m.text} paras={paras} sources={sources} />
             </div>
           ),
         )}
