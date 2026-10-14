@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { CardIcon, QuizIcon, SparkIcon } from "@/app/icons";
 import { flashcardCount, quizCount } from "@/lib/counts";
 import { downloadText, flashcardsToMd, quizToMd, safeName } from "@/lib/export";
 import { splitParagraphs } from "@/lib/paras";
 import { trpc } from "@/lib/trpc";
-import { MindmapView, countMindmapNodes } from "./MindmapView";
+import { ChatBox } from "@/app/(saas)/app/chat/ChatBox";
+import { MindmapView } from "./MindmapView";
 
 type Gen = { id: string; type: string; status: string; result: string | null; error: string | null };
 
@@ -123,6 +125,42 @@ function GenView({ result, type, sources, paras, title, onGenerate }: { result: 
 
 const TYPE_LABEL: Record<string, string> = { flashcards: "閃卡", quiz: "測驗", mindmap: "心智圖" };
 
+type DoneGen = { id: string; type: string; result: string | null; options: string; createdAt: Date };
+
+function SourcesPanel({ title, rawText }: { title: string; rawText: string }) {
+  const paras = useMemo(() => splitParagraphs(rawText), [rawText]);
+  const [openId, setOpenId] = useState<string | null>(null);
+  return (
+    <div className="card flex max-h-[70vh] flex-col overflow-hidden">
+      <div className="border-b border-line p-3">
+        <h2 className="text-sm font-bold">來源</h2>
+        <p className="mt-0.5 text-xs text-muted">
+          {paras.length} 段 · {rawText.length.toLocaleString()} 字
+        </p>
+      </div>
+      <div className="flex-1 overflow-y-auto p-2">
+        {paras.map((p) => {
+          const open = openId === p.id;
+          return (
+            <div key={p.id} className="rounded-md">
+              <button
+                onClick={() => setOpenId(open ? null : p.id)}
+                className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-paper ${open ? "bg-paper" : ""}`}
+              >
+                <span className="mt-0.5 shrink-0 font-mono font-bold text-muted">[{p.id}]</span>
+                <span className="leading-relaxed">{open ? p.text : p.text.length > 60 ? p.text.slice(0, 60) + "…" : p.text}</span>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <div className="border-t border-line p-3">
+        <ExportNoteButton title={title} rawText={rawText} />
+      </div>
+    </div>
+  );
+}
+
 export function NoteDetail({ id }: { id: string }) {
   const note = trpc.note.get.useQuery({ id });
   const start = trpc.generation.start.useMutation();
@@ -140,8 +178,6 @@ export function NoteDetail({ id }: { id: string }) {
   );
 
   useEffect(() => {
-    // 做完就合併進歷史：refetch 完成後清掉 live 並選中它，歷史只會出現一份。
-    // error 留著不清除，讓錯誤訊息一直可見。
     if (poll.data?.status === "done") {
       const doneId = pollId;
       note.refetch().finally(() => {
@@ -173,7 +209,7 @@ export function NoteDetail({ id }: { id: string }) {
           <button
             key={o.v}
             onClick={() => onChange(o.v)}
-            className={`px-3 py-1.5 text-xs font-medium transition-colors ${i > 0 ? "border-l border-line" : ""} ${value === o.v ? "bg-ink text-white" : "bg-card hover:bg-paper"}`}
+            className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${i > 0 ? "border-l border-line" : ""} ${value === o.v ? "bg-ink text-white" : "bg-card hover:bg-paper"}`}
           >
             {o.label}
           </button>
@@ -195,109 +231,152 @@ export function NoteDetail({ id }: { id: string }) {
       ? { id: pollId, type: liveType, status: poll.data.status, result: poll.data.result, error: poll.data.error }
       : null;
   const busy = live && live.status !== "done" && live.status !== "error";
+  const parasList = useMemo(() => (note.data ? splitParagraphs(note.data.rawText) : []), [note.data]);
+  const parasMap = useMemo(() => new Map(parasList.map((p) => [p.id.replace(/^p/, ""), p.text])), [parasList]);
+  const doneGens = useMemo(
+    () => ((note.data?.generations ?? []).filter((g) => g.status === "done" && g.result) as DoneGen[]),
+    [note.data],
+  );
+  const selected = doneGens.find((g) => g.id === selectedId) ?? doneGens[0] ?? null;
+  const noteTitle = note.data?.title ?? "未命名筆記";
 
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-3">
-        <h1 className="text-2xl font-extrabold tracking-tight">{note.data?.title ?? "讀取中…"}</h1>
-        {note.data && <ExportNoteButton title={note.data.title} rawText={note.data.rawText} />}
-      </div>
-      {note.data && (
-        <details className="card p-4 text-sm">
-          <summary className="cursor-pointer font-semibold text-muted">查看原文（{note.data.rawText.length} 字）</summary>
-          <p className="mt-2 whitespace-pre-wrap leading-relaxed">
-            {note.data.rawText.slice(0, 2000)}
-            {note.data.rawText.length > 2000 && "…"}
-          </p>
-        </details>
-      )}
-
-      <div className="card flex flex-col gap-4 p-4 md:p-5">
-        <h2 className="font-bold">出題設定</h2>
-        <div className="grid gap-4 md:grid-cols-[1fr_1fr_1fr_auto]">
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-muted">數量</span>
-            <Seg value={count} onChange={setCount} options={[{ v: "less", label: "更少" }, { v: "standard", label: "標準" }, { v: "more", label: "更多" }]} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-muted">難度</span>
-            <Seg value={level} onChange={setLevel} options={[{ v: "easy", label: "簡單" }, { v: "medium", label: "中等" }, { v: "hard", label: "困難" }]} />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-muted">語言</span>
-            <select value={lang} onChange={(e) => setLang(e.target.value as typeof lang)} className="field !w-auto text-xs">
-              <option value="zh-Hant">繁體中文</option>
-              <option value="zh-Hans">简体中文</option>
-              <option value="en">English</option>
-            </select>
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-muted">自訂題數（1-50，空=公式算）</span>
-            <input value={custom} onChange={(e) => setCustom(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="空" className="field !w-24 text-xs" />
-          </div>
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold text-muted">主題聚焦（可空：只圍繞這個主題出）</span>
-          <textarea value={focus} onChange={(e) => setFocus(e.target.value)} rows={2} placeholder="例如：只考監護與輔助宣告的部分" className="field resize-y text-sm" />
-        </div>
-        <div className="grid gap-3 md:grid-cols-3">
-          <button onClick={() => gen("flashcards")} disabled={start.isPending || !!busy} className="card group flex items-center gap-4 p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#F4F4F5]"><CardIcon size={20} /></span>
-            <span>
-              <span className="block font-semibold group-hover:text-accent">生成閃卡</span>
-              <span className="block text-xs text-muted">{chars ? `${fcPreview} 張` : "…"} · {levelLabel}{chars ? ` · 依 ${chars.toLocaleString()} 字算` : ""}</span>
-            </span>
-          </button>
-          <button onClick={() => gen("quiz")} disabled={start.isPending || !!busy} className="card group flex items-center gap-4 p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#F4F4F5]"><QuizIcon size={20} /></span>
-            <span>
-              <span className="block font-semibold group-hover:text-accent">生成測驗</span>
-              <span className="block text-xs text-muted">{chars ? `${quizPreview} 題單選` : "…"} · {levelLabel}</span>
-            </span>
-          </button>
-          <button onClick={() => gen("mindmap")} disabled={start.isPending || !!busy} className="card group flex items-center gap-4 p-5 text-left transition-shadow hover:shadow-md disabled:opacity-50">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-[#F4F4F5]"><SparkIcon size={20} /></span>
-            <span>
-              <span className="block font-semibold group-hover:text-accent">生成心智圖</span>
-              <span className="block text-xs text-muted">互動圖 · {count === "less" ? "精簡" : count === "more" ? "詳盡" : "標準"}</span>
-            </span>
-          </button>
-        </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2 text-sm">
+        <Link href="/app/notes" className="text-muted hover:text-ink">← 筆記</Link>
+        <h1 className="truncate text-lg font-extrabold tracking-tight">{note.data?.title ?? "讀取中…"}</h1>
       </div>
 
-      {busy && (
-        <div className="card flex items-center gap-3 p-4 text-sm font-medium">
-          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-ink" />
-          AI 出題中…（{live?.status}，好了自動出現）
+      <div className="grid items-start gap-4 xl:grid-cols-[250px_minmax(0,1fr)_300px]">
+        {/* 左：來源 */}
+        <div className="order-3 xl:order-1 xl:sticky xl:top-16">
+          {note.data ? (
+            <SourcesPanel title={note.data.title} rawText={note.data.rawText} />
+          ) : (
+            <div className="card p-4 text-sm text-muted">讀取中…</div>
+          )}
         </div>
-      )}
-      {live?.status === "error" && (
-        <div className="card border-l-4 !border-l-red-400 p-4 text-sm">失敗：{live.error}</div>
-      )}
-      {live?.status === "done" && live.result && (
-        <div className="rise">
-          <h2 className="mb-2 flex items-center gap-1.5 font-bold"><SparkIcon size={16} /> 剛出爐</h2>
-          <GenView
-            result={live.result}
-            type={live.type}
-            sources={readSourceMap(poll.data?.options)}
-            paras={note.data ? splitParagraphs(note.data.rawText) : []}
-            title={note.data?.title ?? "未命名筆記"}
-            onGenerate={(t, f) => gen(t, f)}
-          />
-        </div>
-      )}
 
-      {note.data && (
-        <HistoryArea
-          generations={(note.data.generations ?? []).filter((g) => g.status === "done" && g.result)}
-          selectedId={selectedId}
-          onSelect={setSelectedId}
-          paras={splitParagraphs(note.data.rawText)}
-          noteTitle={note.data.title}
-          onGenerate={(t, f) => gen(t, f)}
-        />
-      )}
+        {/* 中：對話 + 結果 */}
+        <div className="order-1 flex min-w-0 flex-col gap-4 xl:order-2">
+          <div className="card p-4">
+            <h2 className="mb-2 text-sm font-bold">問這份筆記</h2>
+            <ChatBox noteId={id} paras={parasMap} showSuggestions={false} />
+          </div>
+
+          {busy && (
+            <div className="card flex items-center gap-3 p-4 text-sm font-medium">
+              <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-ink" />
+              AI 出題中…（{live?.status}，好了自動出現）
+            </div>
+          )}
+          {live?.status === "error" && (
+            <div className="card border-l-4 !border-l-red-400 p-4 text-sm">失敗：{live.error}</div>
+          )}
+          {live?.status === "done" && live.result && (
+            <div className="rise">
+              <h2 className="mb-2 flex items-center gap-1.5 font-bold"><SparkIcon size={16} /> 剛出爐</h2>
+              <GenView
+                result={live.result}
+                type={live.type}
+                sources={readSourceMap(poll.data?.options)}
+                paras={parasList}
+                title={noteTitle}
+                onGenerate={(t, f) => gen(t, f)}
+              />
+            </div>
+          )}
+          {!busy && !(live?.status === "done" && live.result) && selected && (
+            <div>
+              <h2 className="mb-2 flex items-center gap-1.5 font-bold">
+                {selected.type === "flashcards" ? <CardIcon size={16} /> : selected.type === "mindmap" ? <SparkIcon size={16} /> : <QuizIcon size={16} />}
+                {TYPE_LABEL[selected.type] ?? selected.type}
+              </h2>
+              <GenView
+                key={selected.id}
+                result={selected.result!}
+                type={selected.type}
+                sources={readSourceMap(selected.options)}
+                paras={parasList}
+                title={noteTitle}
+                onGenerate={(t, f) => gen(t, f)}
+              />
+            </div>
+          )}
+          {!busy && !selected && !live && (
+            <div className="card flex flex-col items-center gap-2 p-10 text-center text-muted">
+              <SparkIcon size={26} />
+              <p className="text-sm">還沒生成任何東西，右邊開一發吧。</p>
+            </div>
+          )}
+        </div>
+
+        {/* 右：Studio */}
+        <div className="order-2 flex flex-col gap-4 xl:order-3 xl:sticky xl:top-16">
+          <div className="card flex flex-col gap-3 p-4">
+            <h2 className="text-sm font-bold">Studio</h2>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-muted">數量</span>
+              <Seg value={count} onChange={setCount} options={[{ v: "less", label: "更少" }, { v: "standard", label: "標準" }, { v: "more", label: "更多" }]} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-muted">難度</span>
+              <Seg value={level} onChange={setLevel} options={[{ v: "easy", label: "簡單" }, { v: "medium", label: "中等" }, { v: "hard", label: "困難" }]} />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-muted">語言</span>
+                <select value={lang} onChange={(e) => setLang(e.target.value as typeof lang)} className="field !w-auto text-xs">
+                  <option value="zh-Hant">繁體中文</option>
+                  <option value="zh-Hans">简体中文</option>
+                  <option value="en">English</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <span className="text-xs font-semibold text-muted">自訂題數</span>
+                <input value={custom} onChange={(e) => setCustom(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="空=公式" className="field text-xs" />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs font-semibold text-muted">主題聚焦（可空）</span>
+              <textarea value={focus} onChange={(e) => setFocus(e.target.value)} rows={2} placeholder="例如：只考監護與輔助宣告" className="field resize-y text-xs" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <button onClick={() => gen("flashcards")} disabled={start.isPending || !!busy} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
+                <CardIcon size={16} /> 生成閃卡{chars ? `（${fcPreview} 張）` : ""}
+              </button>
+              <button onClick={() => gen("quiz")} disabled={start.isPending || !!busy} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
+                <QuizIcon size={16} /> 生成測驗{chars ? `（${quizPreview} 題）` : ""}
+              </button>
+              <button onClick={() => gen("mindmap")} disabled={start.isPending || !!busy} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
+                <SparkIcon size={16} /> 生成心智圖（{count === "less" ? "精簡" : count === "more" ? "詳盡" : "標準"}）
+              </button>
+            </div>
+          </div>
+
+          {doneGens.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <h2 className="text-sm font-bold">歷史記錄 <span className="ml-1 text-xs font-normal text-muted">{doneGens.length} 份</span></h2>
+              <div className="card divide-y divide-line overflow-hidden">
+                {doneGens.map((g) => {
+                  const active = selected?.id === g.id;
+                  return (
+                    <button
+                      key={g.id}
+                      onClick={() => setSelectedId(g.id)}
+                      className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-paper ${active ? "bg-paper font-semibold" : ""}`}
+                    >
+                      <span className="text-muted">{g.type === "flashcards" ? <CardIcon size={14} /> : g.type === "mindmap" ? <SparkIcon size={14} /> : <QuizIcon size={14} />}</span>
+                      <span>{TYPE_LABEL[g.type] ?? g.type}</span>
+                      <span className="ml-auto text-muted">{new Date(g.createdAt).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric" })}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -314,65 +393,13 @@ function readSourceMap(optionsJson: string | null | undefined): Record<string, s
   return {};
 }
 
-function countItems(result: string, type: string): number {
-  if (type === "mindmap") return countMindmapNodes(result);
-  try {
-    const arr = JSON.parse(result) as unknown[];
-    return Array.isArray(arr) ? arr.length : 0;
-  } catch {
-    return 0;
-  }
-}
-
 function ExportNoteButton({ title, rawText }: { title: string; rawText: string }) {
   return (
     <button
       onClick={() => downloadText(`${safeName(title)}-筆記.md`, `# ${title}\n\n${rawText}`)}
-      className="ml-auto rounded border border-line px-2.5 py-1 text-xs font-semibold text-muted hover:border-muted hover:text-ink"
+      className="rounded border border-line px-2.5 py-1 text-xs font-semibold text-muted hover:border-muted hover:text-ink"
     >
       匯出筆記 MD
     </button>
-  );
-}
-
-function HistoryArea({
-  generations,
-  selectedId,
-  onSelect,
-  paras,
-  noteTitle,
-  onGenerate,
-}: {
-  generations: { id: string; type: string; result: string | null; options: string; createdAt: Date }[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  paras: { id: string; text: string }[];
-  noteTitle: string;
-  onGenerate: (type: "flashcards" | "quiz", focus: string) => void;
-}) {
-  if (generations.length === 0) return null;
-  const selected = generations.find((g) => g.id === selectedId) ?? generations[0];
-  return (
-    <div className="flex flex-col gap-3">
-      <h2 className="font-bold">歷史記錄 <span className="ml-1 text-xs font-normal text-muted">{generations.length} 份</span></h2>
-      <div className="card divide-y divide-line overflow-hidden">
-        {generations.map((g) => {
-          const active = selected.id === g.id;
-          return (
-            <button
-              key={g.id}
-              onClick={() => onSelect(g.id)}
-              className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors hover:bg-paper ${active ? "bg-paper font-semibold" : ""}`}
-            >
-              <span className="text-muted">{g.type === "flashcards" ? <CardIcon size={16} /> : g.type === "mindmap" ? <SparkIcon size={16} /> : <QuizIcon size={16} />}</span>
-              <span>{TYPE_LABEL[g.type] ?? g.type}</span>
-              <span className="text-xs text-muted">{g.type === "mindmap" ? `${countItems(g.result!, g.type)} 節點` : `${countItems(g.result!, g.type)} 題`}</span>
-              <span className="ml-auto text-xs text-muted">{new Date(g.createdAt).toLocaleString("zh-TW")}</span>
-            </button>
-          );
-        })}
-      </div>
-      <GenView key={selected.id} result={selected.result!} type={selected.type} sources={readSourceMap(selected.options)} paras={paras} title={noteTitle} onGenerate={onGenerate} />
-    </div>
   );
 }

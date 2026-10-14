@@ -81,7 +81,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">設定</h1>
         <p className="mt-1 text-sm text-muted">貼你自己的 API Key，模型費用走你自己的帳號，本站不經手。</p>

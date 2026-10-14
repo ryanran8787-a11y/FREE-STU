@@ -41,7 +41,7 @@ export default function NotesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
       <div>
         <h1 className="text-2xl font-extrabold tracking-tight">筆記</h1>
         <p className="mt-1 text-sm text-muted">貼上課文講義，存成筆記後就能生成閃卡和測驗。</p>
