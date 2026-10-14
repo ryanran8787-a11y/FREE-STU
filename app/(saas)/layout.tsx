@@ -28,7 +28,7 @@ function Nav() {
   const pathname = usePathname();
   return (
     <nav className="sticky top-0 z-10 border-b border-line bg-paper/85 backdrop-blur">
-      <div className="mx-auto flex max-w-3xl items-center gap-1 p-3">
+      <div className="mx-auto flex w-full max-w-[1600px] items-center gap-1 p-3">
         <Link href="/" className="mr-3 flex items-center gap-1.5 text-sm font-bold tracking-tight">
           <span className="flex h-6 w-6 items-center justify-center rounded-md bg-ink text-white">
             <GraduationCap size={15} strokeWidth={2} />
@@ -64,7 +64,7 @@ export default function SaasLayout({ children }: { children: React.ReactNode }) 
       <Suspense>
         <Nav />
       </Suspense>
-      <main className="mx-auto w-full max-w-[1440px] flex-1 p-4 md:p-6">{children}</main>
+      <main className="w-full flex-1 p-4 md:px-6 md:py-6">{children}</main>
     </TrpcProvider>
   );
 }
