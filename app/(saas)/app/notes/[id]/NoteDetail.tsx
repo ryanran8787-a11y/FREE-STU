@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { CardIcon, QuizIcon, SparkIcon } from "@/app/icons";
 import { flashcardCount, quizCount } from "@/lib/counts";
+import { downloadText, flashcardsToMd, quizToMd, safeName } from "@/lib/export";
 import { splitParagraphs } from "@/lib/paras";
 import { trpc } from "@/lib/trpc";
 import { MindmapView, countMindmapNodes } from "./MindmapView";
 
 type Gen = { id: string; type: string; status: string; result: string | null; error: string | null };
 
-function Flashcards({ result }: { result: string }) {
+function Flashcards({ result, title }: { result: string; title: string }) {
   const cards = JSON.parse(result) as { front: string; back: string }[];
   const [i, setI] = useState(0);
   const [flip, setFlip] = useState(false);
@@ -17,6 +18,11 @@ function Flashcards({ result }: { result: string }) {
   const c = cards[Math.min(i, cards.length - 1)];
   return (
     <div className="flex flex-col gap-3">
+      <div className="flex items-center">
+        <button onClick={() => downloadText(`${safeName(title)}-閃卡.md`, flashcardsToMd(title, cards))} className="ml-auto rounded border border-line px-2 py-0.5 text-xs font-semibold text-muted hover:border-muted hover:text-ink">
+          匯出 MD
+        </button>
+      </div>
       <div className="flip-scene">
         <div className={`flip-inner ${flip ? "flipped" : ""}`} onClick={() => setFlip(!flip)}>
           <div className="flip-face card flex min-h-44 cursor-pointer flex-col items-center justify-center p-6 text-center">
@@ -44,13 +50,18 @@ function stripLabel(op: string): string {
   return op.replace(/^[A-D][、．.。:：\s]*/, "");
 }
 
-function Quiz({ result }: { result: string }) {
+function Quiz({ result, title }: { result: string; title: string }) {
   const qs = JSON.parse(result) as { question: string; options: string[]; answer: number; explanation?: string }[];
   const [picked, setPicked] = useState<Record<number, number>>({});
   const done = Object.keys(picked).length === qs.length;
   const score = qs.filter((q, qi) => picked[qi] === q.answer).length;
   return (
     <div className="flex flex-col gap-3">
+      <div className="flex items-center">
+        <button onClick={() => downloadText(`${safeName(title)}-測驗.md`, quizToMd(title, qs))} className="ml-auto rounded border border-line px-2 py-0.5 text-xs font-semibold text-muted hover:border-muted hover:text-ink">
+          匯出 MD
+        </button>
+      </div>
       {done && (
         <div className="card rise border-accent bg-accent-soft p-4 text-center font-bold text-ink">
           {score}/{qs.length} 分 {score === qs.length ? "全對！" : score >= qs.length / 2 ? "不錯，錯的再看一次" : "加油，再複習一下"}
@@ -99,12 +110,12 @@ function Quiz({ result }: { result: string }) {
   );
 }
 
-function GenView({ result, type, sources, paras, onGenerate }: { result: string; type: string; sources: Record<string, string[]>; paras: { id: string; text: string }[]; onGenerate?: (type: "flashcards" | "quiz", focus: string) => void }) {
-  if (type === "mindmap") return <MindmapView result={result} sources={sources} paras={paras} onGenerate={onGenerate} />;
+function GenView({ result, type, sources, paras, title, onGenerate }: { result: string; type: string; sources: Record<string, string[]>; paras: { id: string; text: string }[]; title: string; onGenerate?: (type: "flashcards" | "quiz", focus: string) => void }) {
+  if (type === "mindmap") return <MindmapView result={result} sources={sources} paras={paras} onGenerate={onGenerate} title={title} />;
   try {
     const arr = JSON.parse(result) as Record<string, unknown>[];
-    if (arr.length > 0 && "options" in arr[0]) return <Quiz result={result} />;
-    return <Flashcards result={result} />;
+    if (arr.length > 0 && "options" in arr[0]) return <Quiz result={result} title={title} />;
+    return <Flashcards result={result} title={title} />;
   } catch {
     return <p className="whitespace-pre-wrap text-sm text-red-500">解析失敗，原文：{result.slice(0, 500)}</p>;
   }
@@ -187,7 +198,10 @@ export function NoteDetail({ id }: { id: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <h1 className="text-2xl font-extrabold tracking-tight">{note.data?.title ?? "讀取中…"}</h1>
+      <div className="flex items-center gap-3">
+        <h1 className="text-2xl font-extrabold tracking-tight">{note.data?.title ?? "讀取中…"}</h1>
+        {note.data && <ExportNoteButton title={note.data.title} rawText={note.data.rawText} />}
+      </div>
       {note.data && (
         <details className="card p-4 text-sm">
           <summary className="cursor-pointer font-semibold text-muted">查看原文（{note.data.rawText.length} 字）</summary>
@@ -268,6 +282,7 @@ export function NoteDetail({ id }: { id: string }) {
             type={live.type}
             sources={readSourceMap(poll.data?.options)}
             paras={note.data ? splitParagraphs(note.data.rawText) : []}
+            title={note.data?.title ?? "未命名筆記"}
             onGenerate={(t, f) => gen(t, f)}
           />
         </div>
@@ -279,6 +294,7 @@ export function NoteDetail({ id }: { id: string }) {
           selectedId={selectedId}
           onSelect={setSelectedId}
           paras={splitParagraphs(note.data.rawText)}
+          noteTitle={note.data.title}
           onGenerate={(t, f) => gen(t, f)}
         />
       )}
@@ -308,17 +324,30 @@ function countItems(result: string, type: string): number {
   }
 }
 
+function ExportNoteButton({ title, rawText }: { title: string; rawText: string }) {
+  return (
+    <button
+      onClick={() => downloadText(`${safeName(title)}-筆記.md`, `# ${title}\n\n${rawText}`)}
+      className="ml-auto rounded border border-line px-2.5 py-1 text-xs font-semibold text-muted hover:border-muted hover:text-ink"
+    >
+      匯出筆記 MD
+    </button>
+  );
+}
+
 function HistoryArea({
   generations,
   selectedId,
   onSelect,
   paras,
+  noteTitle,
   onGenerate,
 }: {
   generations: { id: string; type: string; result: string | null; options: string; createdAt: Date }[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   paras: { id: string; text: string }[];
+  noteTitle: string;
   onGenerate: (type: "flashcards" | "quiz", focus: string) => void;
 }) {
   if (generations.length === 0) return null;
@@ -343,7 +372,7 @@ function HistoryArea({
           );
         })}
       </div>
-      <GenView key={selected.id} result={selected.result!} type={selected.type} sources={readSourceMap(selected.options)} paras={paras} onGenerate={onGenerate} />
+      <GenView key={selected.id} result={selected.result!} type={selected.type} sources={readSourceMap(selected.options)} paras={paras} title={noteTitle} onGenerate={onGenerate} />
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Transformer } from "markmap-lib";
 import { Markmap } from "markmap-view";
+import { downloadBlob, downloadText, safeName, serializeSvg, svgToPngBlob } from "@/lib/export";
 import type { Para } from "@/lib/paras";
 
 const transformer = new Transformer();
@@ -19,11 +20,13 @@ export function MindmapView({
   sources,
   paras,
   onGenerate,
+  title,
 }: {
   result: string;
   sources: Record<string, string[]>;
   paras: Para[];
   onGenerate?: (type: "flashcards" | "quiz", focus: string) => void;
+  title: string;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const mmRef = useRef<Markmap | null>(null);
@@ -67,6 +70,32 @@ export function MindmapView({
 
   const paraById = new Map(paras.map((p) => [p.id, p.text]));
   const refs = selected ? (sources[selected] ?? []) : [];
+  const [exportMsg, setExportMsg] = useState("");
+
+  function exportMd() {
+    downloadText(`${safeName(title)}-心智圖.md`, result);
+  }
+
+  function exportSvg() {
+    if (!svgRef.current) return;
+    try {
+      downloadText(`${safeName(title)}-心智圖.svg`, serializeSvg(svgRef.current), "image/svg+xml;charset=utf-8");
+    } catch {
+      setExportMsg("SVG 匯出失敗");
+    }
+  }
+
+  async function exportPng() {
+    if (!svgRef.current) return;
+    setExportMsg("轉 PNG 中…");
+    try {
+      const blob = await svgToPngBlob(svgRef.current);
+      downloadBlob(`${safeName(title)}-心智圖.png`, blob);
+      setExportMsg("");
+    } catch {
+      setExportMsg("PNG 匯出失敗（瀏覽器不支援 SVG 外部渲染）");
+    }
+  }
 
   useEffect(() => {
     if (selected) panelRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -78,10 +107,15 @@ export function MindmapView({
         <svg ref={svgRef} className="h-[420px] w-full bg-card md:h-[520px]" />
         <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2 text-xs text-muted">
           <span>可縮放 · 點圖上節點收合/看來源</span>
+          <span className="ml-auto flex items-center gap-1">
+            <button onClick={exportMd} className="rounded border border-line px-2 py-0.5 font-semibold hover:border-muted">MD</button>
+            <button onClick={exportSvg} className="rounded border border-line px-2 py-0.5 font-semibold hover:border-muted">SVG</button>
+            <button onClick={exportPng} className="rounded border border-line px-2 py-0.5 font-semibold hover:border-muted">PNG</button>
+          </span>
           <button
             onClick={() => setSelftest((v) => !v)}
             title="遮住葉節點文字，自己回想再展開對答案"
-            className={`ml-auto rounded-full border px-2.5 py-1 font-semibold transition-colors ${selftest ? "border-ink bg-ink text-white" : "border-line hover:border-muted"}`}
+            className={`rounded-full border px-2.5 py-1 font-semibold transition-colors ${selftest ? "border-ink bg-ink text-white" : "border-line hover:border-muted"}`}
           >
             {selftest ? "自測中…點我結束" : "自測模式"}
           </button>
@@ -89,6 +123,7 @@ export function MindmapView({
             {showList ? "收起節點列表" : `節點列表（${titles.length}）▾`}
           </button>
         </div>
+        {exportMsg && <p className="border-t border-line px-4 py-1.5 text-xs text-muted">{exportMsg}</p>}
         {showList && (
           <div className="flex max-h-44 flex-wrap gap-1.5 overflow-y-auto border-t border-line p-3">
             {titles.map((t) => (
