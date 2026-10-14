@@ -12,10 +12,12 @@ export function ChatBox({
   noteId,
   paras,
   showSuggestions = true,
+  compact = false,
 }: {
   noteId?: string;
   paras: Map<string, string>;
   showSuggestions?: boolean;
+  compact?: boolean;
 }) {
   const [input, setInput] = useState("");
   const [msgs, setMsgs] = useState<Msg[]>([]);
@@ -98,10 +100,10 @@ export function ChatBox({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex min-h-56 flex-col gap-4">
+      <div className={`flex flex-col gap-4 ${compact ? "min-h-0" : "min-h-56"}`}>
         {msgs.length === 0 && showSuggestions && (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3 py-6 text-center text-muted">
-            <BagIcon size={26} />
+          <div className={`flex flex-1 flex-col items-center justify-center gap-3 text-center text-muted ${compact ? "py-3" : "py-6"}`}>
+            {!compact && <BagIcon size={26} />}
             <p className="text-sm">還沒開始聊，試試下面這些：</p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((s) => (

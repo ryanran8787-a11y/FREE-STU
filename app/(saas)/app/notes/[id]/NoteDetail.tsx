@@ -257,13 +257,8 @@ export function NoteDetail({ id }: { id: string }) {
           )}
         </div>
 
-        {/* 中：對話 + 結果 */}
+        {/* 中：結果 + 對話（結果在上，對話在下） */}
         <div className="order-1 flex min-w-0 flex-col gap-4 lg:order-2">
-          <div className="card p-4">
-            <h2 className="mb-2 text-sm font-bold">問這份筆記</h2>
-            <ChatBox noteId={id} paras={parasMap} showSuggestions={false} />
-          </div>
-
           {busy && (
             <div className="card flex items-center gap-3 p-4 text-sm font-medium">
               <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-ink" />
@@ -309,6 +304,11 @@ export function NoteDetail({ id }: { id: string }) {
               <p className="text-sm">還沒生成任何東西，右邊開一發吧。</p>
             </div>
           )}
+
+          <div className="card p-4">
+            <h2 className="mb-2 text-sm font-bold">問這份筆記</h2>
+            <ChatBox noteId={id} paras={parasMap} showSuggestions={false} compact />
+          </div>
         </div>
 
         {/* 右：Studio */}
