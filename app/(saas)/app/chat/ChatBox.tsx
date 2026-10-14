@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ArrowUp } from "lucide-react";
 import { BagIcon } from "@/app/icons";
 import { AiMessage } from "./AiMessage";
 
@@ -137,7 +138,7 @@ export function ChatBox({
           </div>
         )}
       </div>
-      <div className="sticky bottom-4 flex gap-2">
+      <div className="sticky bottom-4 flex items-end gap-2 rounded-2xl border border-line bg-card p-2 pl-4 shadow-lg">
         <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -149,10 +150,15 @@ export function ChatBox({
           }}
           rows={2}
           placeholder="輸入問題，Enter 送出（Shift+Enter 換行）"
-          className="field resize-none shadow-lg"
+          className="max-h-32 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-muted"
         />
-        <button onClick={() => send()} disabled={streaming || !input.trim()} className="btn-primary shrink-0 !rounded-2xl">
-          送出
+        <button
+          onClick={() => send()}
+          disabled={streaming || !input.trim()}
+          aria-label="送出"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink text-white transition-opacity disabled:opacity-30"
+        >
+          <ArrowUp size={17} strokeWidth={2.5} />
         </button>
       </div>
     </div>
