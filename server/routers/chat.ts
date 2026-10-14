@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
+import { headParagraphs } from "@/lib/paras";
 import { chatCompletion, getKeyOrThrow, logUsage } from "@/server/llm";
 import { publicProcedure, router } from "@/server/trpc";
 
@@ -17,9 +18,10 @@ export const chatRouter = router({
       if (input.noteId) {
         const note = await db.note.findUnique({ where: { id: input.noteId } });
         if (note) {
+          const paras = headParagraphs(note.rawText);
           messages.push({
             role: "system",
-            content: `你是學習助教。以下是一份筆記，全文引用它回答問題：\n\n${note.rawText.slice(0, 12000)}`,
+            content: `你是學習助教，只能根據以下編號段落回答，不要用段落外的知識。引用依據時在句末標段落編號，形如「……[p2]」。用繁體中文回答。\n\n${paras.map((p) => `[${p.id}] ${p.text}`).join("\n")}`,
           });
         }
       } else {

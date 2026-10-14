@@ -1,8 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { BagIcon } from "@/app/icons";
+import { splitParagraphs } from "@/lib/paras";
 import { trpc } from "@/lib/trpc";
+import { AiMessage } from "./AiMessage";
 
 type Msg = { role: "user" | "ai"; text: string };
 
@@ -15,6 +17,11 @@ export default function ChatPage() {
   const ask = trpc.chat.ask.useMutation();
   const keyStatus = trpc.user.getKeyStatus.useQuery();
   const notes = trpc.note.list.useQuery();
+  const activeNote = trpc.note.get.useQuery({ id: noteId }, { enabled: !!noteId });
+  const paras = useMemo(() => {
+    if (!activeNote.data) return new Map<string, string>();
+    return new Map(splitParagraphs(activeNote.data.rawText).map((p) => [p.id.replace(/^p/, ""), p.text]));
+  }, [activeNote.data]);
 
   async function send(text?: string) {
     const message = (text ?? input).trim();
@@ -83,9 +90,7 @@ export default function ChatPage() {
             </div>
           ) : (
             <div key={i} className="rise flex justify-start">
-              <div className="max-w-[90%] whitespace-pre-wrap rounded-lg rounded-bl-sm border border-line bg-paper px-3.5 py-2.5 text-sm leading-relaxed">
-                {m.text}
-              </div>
+              <AiMessage text={m.text} paras={paras} />
             </div>
           ),
         )}
