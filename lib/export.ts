@@ -1,4 +1,5 @@
 // 純前端匯出：下載檔案，不經後端。
+import { toPng } from "html-to-image";
 
 export function downloadText(filename: string, text: string, mime = "text/markdown;charset=utf-8") {
   const blob = new Blob([text], { type: mime });
@@ -52,34 +53,14 @@ export function serializeSvg(svg: SVGSVGElement): string {
   return new XMLSerializer().serializeToString(clone);
 }
 
-export function svgToPngBlob(svg: SVGSVGElement, scale = 2): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const text = serializeSvg(svg);
-    const url = URL.createObjectURL(new Blob([text], { type: "image/svg+xml;charset=utf-8" }));
-    const img = new Image();
-    img.onload = () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("canvas 不可用");
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        URL.revokeObjectURL(url);
-        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("轉 PNG 失敗"))), "image/png");
-      } catch (e) {
-        URL.revokeObjectURL(url);
-        reject(e);
-      }
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("SVG 載入失敗"));
-    };
-    img.src = url;
+export async function svgToPngBlob(svg: SVGSVGElement): Promise<Blob> {
+  const dataUrl = await toPng(svg, {
+    backgroundColor: "#ffffff",
+    pixelRatio: 2,
+    cacheBust: true,
   });
+  const res = await fetch(dataUrl);
+  return await res.blob();
 }
 
 export function downloadBlob(filename: string, blob: Blob) {
