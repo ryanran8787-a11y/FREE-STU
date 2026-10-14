@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { BagIcon } from "@/app/icons";
 import { splitParagraphs } from "@/lib/paras";
 import { trpc } from "@/lib/trpc";
@@ -14,7 +14,8 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [noteId, setNoteId] = useState("");
-  const ask = trpc.chat.ask.useMutation();
+  const [streaming, setStreaming] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const keyStatus = trpc.user.getKeyStatus.useQuery();
   const notes = trpc.note.list.useQuery();
   const activeNote = trpc.note.get.useQuery({ id: noteId }, { enabled: !!noteId });
@@ -23,19 +24,81 @@ export default function ChatPage() {
     return new Map(splitParagraphs(activeNote.data.rawText).map((p) => [p.id.replace(/^p/, ""), p.text]));
   }, [activeNote.data]);
 
+  function stop() {
+    abortRef.current?.abort();
+  }
+
   async function send(text?: string) {
     const message = (text ?? input).trim();
-    if (!message || ask.isPending) return;
+    if (!message || streaming) return;
     setInput("");
-    setMsgs((m) => [...m, { role: "user", text: message }]);
+    setMsgs((m) => [...m, { role: "user", text: message }, { role: "ai", text: "" }]);
+    setStreaming(true);
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     try {
-      const res = await ask.mutateAsync({ message, noteId: noteId || undefined });
-      setMsgs((m) => [...m, { role: "ai", text: res.reply }]);
+      const res = await fetch("/api/chat/stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, noteId: noteId || undefined }),
+        signal: ctrl.signal,
+      });
+      if (!res.ok || !res.body) {
+        const err = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(err?.error ?? `HTTP ${res.status}`);
+      }
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      let acc = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split("\n\n");
+        buf = parts.pop() ?? "";
+        for (const part of parts) {
+          for (const line of part.split("\n")) {
+            const t = line.trim();
+            if (!t.startsWith("data:")) continue;
+            try {
+              const evt = JSON.parse(t.slice(5).trim()) as { delta?: string; error?: string; done?: boolean };
+              if (evt.error) throw new Error(evt.error);
+              if (evt.delta) {
+                acc += evt.delta;
+                const snapshot = acc;
+                setMsgs((m) => {
+                  const next = [...m];
+                  next[next.length - 1] = { role: "ai", text: snapshot };
+                  return next;
+                });
+              }
+            } catch (e) {
+              if (e instanceof Error && e.message !== "Unexpected end of JSON input") throw e;
+            }
+          }
+        }
+      }
+      if (!acc) {
+        setMsgs((m) => {
+          const next = [...m];
+          next[next.length - 1] = { role: "ai", text: "（對方已取消或無回應）" };
+          return next;
+        });
+      }
     } catch (e) {
-      setMsgs((m) => [
-        ...m,
-        { role: "ai", text: `出錯了：${e instanceof Error ? e.message : "未知錯誤"}` },
-      ]);
+      const aborted = e instanceof Error && (e.name === "AbortError" || ctrl.signal.aborted);
+      setMsgs((m) => {
+        const next = [...m];
+        const last = next[next.length - 1];
+        if (last && last.role === "ai" && !last.text) next.pop();
+        else if (last && last.role === "ai") next[next.length - 1] = { ...last, text: last.text + "\n\n（已停止）" };
+        else next.push({ role: "ai", text: aborted ? "（已停止）" : `出錯了：${e instanceof Error ? e.message : "未知錯誤"}` });
+        return next;
+      });
+    } finally {
+      setStreaming(false);
+      abortRef.current = null;
     }
   }
 
@@ -94,10 +157,13 @@ export default function ChatPage() {
             </div>
           ),
         )}
-        {ask.isPending && (
+        {streaming && (
           <div className="flex items-center gap-2 text-sm text-muted">
             <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-ink" />
-            助教想一下…
+            輸出中…
+            <button onClick={stop} className="rounded border border-line px-2 py-0.5 text-xs font-semibold hover:border-muted hover:text-ink">
+              停止
+            </button>
           </div>
         )}
       </div>
@@ -118,7 +184,7 @@ export default function ChatPage() {
         />
         <button
           onClick={() => send()}
-          disabled={ask.isPending || !input.trim()}
+          disabled={streaming || !input.trim()}
           className="btn-primary shrink-0 !rounded-2xl"
         >
           送出
