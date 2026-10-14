@@ -157,4 +157,48 @@ export const generationRouter = router({
     if (!gen) throw new Error("找不到任務");
     return { status: gen.status, result: gen.result, error: gen.error, options: gen.options };
   }),
+
+  /** 心智圖編輯存檔：覆寫 result + 來源映射（只允許改 mindmap 且已完成的） */
+  saveResult: publicProcedure
+    .input(
+      z.object({
+        id: z.string(),
+        result: z.string().min(1).max(60000),
+        sourceMap: z.record(z.string(), z.array(z.string())).default({}),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const gen = await db.generation.findUnique({ where: { id: input.id } });
+      if (!gen || gen.type !== "mindmap" || gen.status !== "done") throw new Error("只能編輯已完成的心智圖");
+      let options: Record<string, unknown> = {};
+      try {
+        options = JSON.parse(gen.options || "{}") as Record<string, unknown>;
+      } catch {
+        /* ignore */
+      }
+      await db.generation.update({
+        where: { id: input.id },
+        data: { result: input.result, options: JSON.stringify({ ...options, sourceMap: input.sourceMap }) },
+      });
+      return { ok: true };
+    }),
+
+  /** 節點已理解標記：存在 options.mastered */
+  setMastered: publicProcedure
+    .input(z.object({ id: z.string(), titles: z.array(z.string().max(200)).max(500) }))
+    .mutation(async ({ input }) => {
+      const gen = await db.generation.findUnique({ where: { id: input.id } });
+      if (!gen || gen.type !== "mindmap") throw new Error("只能標記心智圖節點");
+      let options: Record<string, unknown> = {};
+      try {
+        options = JSON.parse(gen.options || "{}") as Record<string, unknown>;
+      } catch {
+        /* ignore */
+      }
+      await db.generation.update({
+        where: { id: input.id },
+        data: { options: JSON.stringify({ ...options, mastered: [...new Set(input.titles)] }) },
+      });
+      return { ok: true };
+    }),
 });

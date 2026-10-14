@@ -112,8 +112,8 @@ function Quiz({ result, title }: { result: string; title: string }) {
   );
 }
 
-function GenView({ result, type, sources, paras, title, onGenerate }: { result: string; type: string; sources: Record<string, string[]>; paras: { id: string; text: string }[]; title: string; onGenerate?: (type: "flashcards" | "quiz", focus: string) => void }) {
-  if (type === "mindmap") return <MindmapView result={result} sources={sources} paras={paras} onGenerate={onGenerate} title={title} />;
+function GenView({ result, type, sources, paras, title, genId, masteredInit, onSaved, onGenerate }: { result: string; type: string; sources: Record<string, string[]>; paras: { id: string; text: string }[]; title: string; genId: string; masteredInit: string[]; onSaved: () => void; onGenerate?: (type: "flashcards" | "quiz", focus: string) => void }) {
+  if (type === "mindmap") return <MindmapView result={result} sources={sources} paras={paras} onGenerate={onGenerate} title={title} genId={genId} masteredInit={masteredInit} onSaved={onSaved} />;
   try {
     const arr = JSON.parse(result) as Record<string, unknown>[];
     if (arr.length > 0 && "options" in arr[0]) return <Quiz result={result} title={title} />;
@@ -277,6 +277,9 @@ export function NoteDetail({ id }: { id: string }) {
                 sources={readSourceMap(poll.data?.options)}
                 paras={parasList}
                 title={noteTitle}
+                genId={pollId ?? ""}
+                masteredInit={readMastered(poll.data?.options)}
+                onSaved={() => note.refetch()}
                 onGenerate={(t, f) => gen(t, f)}
               />
             </div>
@@ -294,6 +297,9 @@ export function NoteDetail({ id }: { id: string }) {
                 sources={readSourceMap(selected.options)}
                 paras={parasList}
                 title={noteTitle}
+                genId={selected.id}
+                masteredInit={readMastered(selected.options)}
+                onSaved={() => note.refetch()}
                 onGenerate={(t, f) => gen(t, f)}
               />
             </div>
@@ -391,6 +397,16 @@ function readSourceMap(optionsJson: string | null | undefined): Record<string, s
     /* 舊資料沒有映射 */
   }
   return {};
+}
+
+function readMastered(optionsJson: string | null | undefined): string[] {
+  try {
+    const o = JSON.parse(optionsJson || "{}") as { mastered?: unknown };
+    if (Array.isArray(o.mastered)) return o.mastered.filter((t): t is string => typeof t === "string");
+  } catch {
+    /* 舊資料沒有 */
+  }
+  return [];
 }
 
 function ExportNoteButton({ title, rawText }: { title: string; rawText: string }) {

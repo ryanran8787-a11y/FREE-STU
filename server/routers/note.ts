@@ -23,4 +23,12 @@ export const noteRouter = router({
       include: { generations: { orderBy: { createdAt: "desc" } } },
     });
   }),
+
+  getMany: publicProcedure.input(z.object({ ids: z.array(z.string()).max(10) })).query(async ({ input }) => {
+    if (input.ids.length === 0) return [];
+    return db.note.findMany({
+      where: { id: { in: input.ids } },
+      select: { id: true, title: true, rawText: true },
+    });
+  }),
 });

@@ -8,10 +8,45 @@ import { trpc } from "@/lib/trpc";
 export default function NotesPage() {
   const notes = trpc.note.list.useQuery();
   const create = trpc.note.create.useMutation();
+  const utils = trpc.useUtils();
   const [title, setTitle] = useState("");
   const [rawText, setRawText] = useState("");
   const [uploadMsg, setUploadMsg] = useState("");
+  const [merging, setMerging] = useState(false);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
+
+  function toggle(id: string) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function merge() {
+    const ids = [...checked];
+    if (ids.length < 2 || merging) return;
+    setMerging(true);
+    try {
+      const full = await utils.note.getMany.fetch({ ids });
+      if (full.length < 2) throw new Error("讀不到筆記內容");
+      const combined = full
+        .map((n) => `【來源：${n.title}】\n\n${n.rawText}`)
+        .join("\n\n————\n\n")
+        .slice(0, 60000);
+      const made = await create.mutateAsync({
+        title: `合併-${full.slice(0, 3).map((n) => n.title.slice(0, 8)).join("+")}`,
+        rawText: combined,
+      });
+      window.location.href = `/app/notes/${made.id}`;
+    } catch (err) {
+      setUploadMsg(`合併失敗：${err instanceof Error ? err.message : "未知錯誤"}`);
+    } finally {
+      setMerging(false);
+    }
+  }
 
   async function save() {
     if (!rawText.trim() || create.isPending) return;
@@ -75,14 +110,34 @@ export default function NotesPage() {
         </button>
       </div>
 
+      {checked.size >= 2 && (
+        <div className="card rise flex items-center gap-3 border-primary bg-primary-soft p-3 text-sm">
+          <span>已選 <b>{checked.size}</b> 份筆記</span>
+          <button onClick={merge} disabled={merging} className="btn-primary ml-auto !px-4 !py-1.5 text-xs disabled:opacity-50">
+            {merging ? "合併中…" : "合併生成知識地圖"}
+          </button>
+          <button onClick={() => setChecked(new Set())} className="text-xs text-muted hover:text-ink">
+            清除
+          </button>
+        </div>
+      )}
       <div className="grid gap-3 md:grid-cols-2">
         {notes.data?.map((n) => (
-          <Link key={n.id} href={`/app/notes/${n.id}`} className="card group p-4 transition-shadow hover:shadow-md">
-            <div className="text-sm font-semibold transition-colors group-hover:text-accent">{n.title}</div>
-            <div className="mt-1 text-xs text-muted">
-              {new Date(n.createdAt).toLocaleString("zh-TW")} · {n._count.generations} 個生成
-            </div>
-          </Link>
+          <div key={n.id} className={`card group flex items-start gap-2 p-4 transition-shadow hover:shadow-md ${checked.has(n.id) ? "!border-primary" : ""}`}>
+            <input
+              type="checkbox"
+              checked={checked.has(n.id)}
+              onChange={() => toggle(n.id)}
+              title="勾選以合併"
+              className="mt-1 h-4 w-4 accent-[#059669]"
+            />
+            <Link href={`/app/notes/${n.id}`} className="flex-1">
+              <div className="text-sm font-semibold transition-colors group-hover:text-accent">{n.title}</div>
+              <div className="mt-1 text-xs text-muted">
+                {new Date(n.createdAt).toLocaleString("zh-TW")} · {n._count.generations} 個生成
+              </div>
+            </Link>
+          </div>
         ))}
       </div>
       {notes.data?.length === 0 && (
