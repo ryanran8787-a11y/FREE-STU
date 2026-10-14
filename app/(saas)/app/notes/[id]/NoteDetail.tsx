@@ -99,8 +99,8 @@ function Quiz({ result }: { result: string }) {
   );
 }
 
-function GenView({ result, type, sources, paras }: { result: string; type: string; sources: Record<string, string[]>; paras: { id: string; text: string }[] }) {
-  if (type === "mindmap") return <MindmapView result={result} sources={sources} paras={paras} />;
+function GenView({ result, type, sources, paras, onGenerate }: { result: string; type: string; sources: Record<string, string[]>; paras: { id: string; text: string }[]; onGenerate?: (type: "flashcards" | "quiz", focus: string) => void }) {
+  if (type === "mindmap") return <MindmapView result={result} sources={sources} paras={paras} onGenerate={onGenerate} />;
   try {
     const arr = JSON.parse(result) as Record<string, unknown>[];
     if (arr.length > 0 && "options" in arr[0]) return <Quiz result={result} />;
@@ -140,7 +140,7 @@ export function NoteDetail({ id }: { id: string }) {
     }
   }, [poll.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function gen(type: "flashcards" | "quiz" | "mindmap") {
+  async function gen(type: "flashcards" | "quiz" | "mindmap", focusOverride?: string) {
     const n = parseInt(custom, 10);
     const res = await start.mutateAsync({
       noteId: id,
@@ -148,7 +148,7 @@ export function NoteDetail({ id }: { id: string }) {
       count,
       difficulty: level,
       language: lang,
-      focus,
+      focus: focusOverride ?? focus,
       ...(Number.isFinite(n) && n >= 1 ? { customCount: Math.min(50, n) } : {}),
     });
     setLiveType(type);
@@ -268,6 +268,7 @@ export function NoteDetail({ id }: { id: string }) {
             type={live.type}
             sources={readSourceMap(poll.data?.options)}
             paras={note.data ? splitParagraphs(note.data.rawText) : []}
+            onGenerate={(t, f) => gen(t, f)}
           />
         </div>
       )}
@@ -278,6 +279,7 @@ export function NoteDetail({ id }: { id: string }) {
           selectedId={selectedId}
           onSelect={setSelectedId}
           paras={splitParagraphs(note.data.rawText)}
+          onGenerate={(t, f) => gen(t, f)}
         />
       )}
     </div>
@@ -311,11 +313,13 @@ function HistoryArea({
   selectedId,
   onSelect,
   paras,
+  onGenerate,
 }: {
   generations: { id: string; type: string; result: string | null; options: string; createdAt: Date }[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   paras: { id: string; text: string }[];
+  onGenerate: (type: "flashcards" | "quiz", focus: string) => void;
 }) {
   if (generations.length === 0) return null;
   const selected = generations.find((g) => g.id === selectedId) ?? generations[0];
@@ -339,7 +343,7 @@ function HistoryArea({
           );
         })}
       </div>
-      <GenView key={selected.id} result={selected.result!} type={selected.type} sources={readSourceMap(selected.options)} paras={paras} />
+      <GenView key={selected.id} result={selected.result!} type={selected.type} sources={readSourceMap(selected.options)} paras={paras} onGenerate={onGenerate} />
     </div>
   );
 }

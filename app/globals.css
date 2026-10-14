@@ -116,6 +116,12 @@ body {
   text-decoration: underline;
 }
 
+/* 自測模式：葉節點（沒有子節點的）文字模糊，可點可收合 */
+.selftest g.markmap-node:not(:has(g.markmap-node)) foreignObject {
+  filter: blur(5px);
+  user-select: none;
+}
+
 /* 進場動畫 */
 @keyframes rise {
   from {

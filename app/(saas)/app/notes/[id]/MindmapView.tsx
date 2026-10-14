@@ -18,15 +18,18 @@ export function MindmapView({
   result,
   sources,
   paras,
+  onGenerate,
 }: {
   result: string;
   sources: Record<string, string[]>;
   paras: Para[];
+  onGenerate?: (type: "flashcards" | "quiz", focus: string) => void;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const mmRef = useRef<Markmap | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [showList, setShowList] = useState(false);
+  const [selftest, setSelftest] = useState(false);
   const [titles, setTitles] = useState<string[]>([]);
   const titlesRef = useRef<string[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -71,11 +74,18 @@ export function MindmapView({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="card overflow-hidden">
+      <div className={`card overflow-hidden ${selftest ? "selftest" : ""}`}>
         <svg ref={svgRef} className="h-[420px] w-full bg-card md:h-[520px]" />
         <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-2 text-xs text-muted">
           <span>可縮放 · 點圖上節點收合/看來源</span>
-          <button onClick={() => setShowList((v) => !v)} className="ml-auto font-semibold text-accent hover:underline">
+          <button
+            onClick={() => setSelftest((v) => !v)}
+            title="遮住葉節點文字，自己回想再展開對答案"
+            className={`ml-auto rounded-full border px-2.5 py-1 font-semibold transition-colors ${selftest ? "border-ink bg-ink text-white" : "border-line hover:border-muted"}`}
+          >
+            {selftest ? "自測中…點我結束" : "自測模式"}
+          </button>
+          <button onClick={() => setShowList((v) => !v)} className="font-semibold text-accent hover:underline">
             {showList ? "收起節點列表" : `節點列表（${titles.length}）▾`}
           </button>
         </div>
@@ -116,6 +126,16 @@ export function MindmapView({
                   {paraById.get(id) ?? "（段落已不存在）"}
                 </div>
               ))}
+            </div>
+          )}
+          {onGenerate && (
+            <div className="mt-3 flex gap-2">
+              <button onClick={() => onGenerate("flashcards", selected)} className="btn-ghost !px-3 !py-1.5 text-xs">
+                以「{selected.length > 12 ? selected.slice(0, 12) + "…" : selected}」出閃卡
+              </button>
+              <button onClick={() => onGenerate("quiz", selected)} className="btn-ghost !px-3 !py-1.5 text-xs">
+                出測驗
+              </button>
             </div>
           )}
         </div>
