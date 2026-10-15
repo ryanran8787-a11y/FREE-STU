@@ -12,12 +12,15 @@ const keyInput = z.object({
 export const userRouter = router({
   getKeyStatus: publicProcedure.query(async () => {
     const row = await db.userKey.findUnique({ where: { id: "default" } });
-    if (!row) return { hasKey: false as const };
+    if (!row) return { hasKey: false as const, vision: null };
     return {
       hasKey: true as const,
       provider: row.provider,
       baseUrl: row.baseUrl,
       model: row.model,
+      vision: row.visionApiKey
+        ? { provider: row.visionProvider ?? "", model: row.visionModel ?? "" }
+        : null,
     };
   }),
 
@@ -34,5 +37,44 @@ export const userRouter = router({
       update: { provider: input.provider, baseUrl, model: input.model, apiKey },
     });
     return { ok: true };
+  }),
+
+  /** 視覺模型 key（可空）：有填走視覺 OCR，沒填降級本地鏈 */
+  setVision: publicProcedure
+    .input(
+      z.object({
+        provider: z.string().max(40).default(""),
+        baseUrl: z.string().max(200).default(""),
+        model: z.string().max(120).default(""),
+        apiKey: z.string().max(500).default(""),
+      }),
+    )
+    .mutation(async ({ input }) => {
+      const apiKey = input.apiKey.trim();
+      const existing = await db.userKey.findUnique({ where: { id: "default" } });
+      if (!existing) throw new Error("先設定主 Key，才能加視覺模型");
+      await db.userKey.update({
+        where: { id: "default" },
+        data: apiKey
+          ? {
+              visionProvider: input.provider,
+              visionBaseUrl: input.baseUrl.replace(/\/+$/, ""),
+              visionModel: input.model,
+              visionApiKey: apiKey,
+            }
+          : { visionProvider: null, visionBaseUrl: null, visionModel: null, visionApiKey: null },
+      });
+      return { ok: true, configured: !!apiKey };
+    }),
+
+  getVision: publicProcedure.query(async () => {
+    const row = await db.userKey.findUnique({ where: { id: "default" } });
+    if (!row?.visionApiKey) return { configured: false as const };
+    return {
+      configured: true as const,
+      provider: row.visionProvider ?? "",
+      baseUrl: row.visionBaseUrl ?? "",
+      model: row.visionModel ?? "",
+    };
   }),
 });

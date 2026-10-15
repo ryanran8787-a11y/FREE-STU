@@ -144,9 +144,9 @@ export default function NotesPage() {
           <h2 className="font-bold">貼文字</h2>
           <span className="text-xs text-muted">或</span>
           <button onClick={() => fileRef.current?.click()} className="btn-ghost !px-3 !py-1.5 text-xs">
-            <UploadIcon size={14} /> 上傳 .txt / .md / .pdf
+            <UploadIcon size={14} /> 上傳 .txt / .md / .docx / .pdf
           </button>
-          <input ref={fileRef} type="file" accept=".txt,.md,.markdown,.pdf" onChange={upload} className="hidden" />
+          <input ref={fileRef} type="file" accept=".txt,.md,.markdown,.docx,.pdf" onChange={upload} className="hidden" />
         </div>
         {uploadMsg && <p className="text-xs text-muted">{uploadMsg}</p>}
         <input

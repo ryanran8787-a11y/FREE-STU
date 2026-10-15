@@ -53,12 +53,19 @@ const DEFAULT_PRESET = PRESET_GROUPS[0].items[0];
 export default function SettingsPage() {
   const status = trpc.user.getKeyStatus.useQuery();
   const usage = trpc.usage.stats.useQuery();
+  const vision = trpc.user.getVision.useQuery();
   const setKey = trpc.user.setKey.useMutation();
+  const setVision = trpc.user.setVision.useMutation();
   const [provider, setProvider] = useState("openai");
   const [baseUrl, setBaseUrl] = useState(DEFAULT_PRESET.baseUrl);
   const [model, setModel] = useState(DEFAULT_PRESET.model);
   const [apiKey, setApiKey] = useState("");
   const [msg, setMsg] = useState("");
+  const [vProvider, setVProvider] = useState("Gemini");
+  const [vBaseUrl, setVBaseUrl] = useState("https://generativelanguage.googleapis.com/v1beta/openai");
+  const [vModel, setVModel] = useState("gemini-2.5-flash");
+  const [vApiKey, setVApiKey] = useState("");
+  const [vMsg, setVMsg] = useState("");
 
   useEffect(() => {
     if (status.data?.hasKey) {
@@ -67,6 +74,14 @@ export default function SettingsPage() {
       setModel(status.data.model);
     }
   }, [status.data]);
+
+  useEffect(() => {
+    if (vision.data?.configured) {
+      setVProvider(vision.data.provider || "Gemini");
+      setVBaseUrl(vision.data.baseUrl);
+      setVModel(vision.data.model);
+    }
+  }, [vision.data]);
 
   async function save() {
     setMsg("");
@@ -172,6 +187,74 @@ export default function SettingsPage() {
           {setKey.isPending ? "儲存中…" : "儲存"}
         </button>
         {msg && <p className="text-sm">{msg}</p>}
+      </div>
+
+      <div className="card flex flex-col gap-3 p-4 md:p-5">
+        <h2 className="font-extrabold">視覺模型（選填：掃描 PDF 高精度 OCR 用）</h2>
+        <p className="text-sm text-muted">
+          有填就用你的視覺模型讀掃描頁（要支援看圖的模型，如 Gemini / GPT-4o），沒填就降級全免費本地鏈。
+          狀態：{vision.isLoading ? "讀取中…" : vision.data?.configured ? `已設定（${vision.data.provider} / ${vision.data.model}）` : "未設定（本地鏈）"}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {["Gemini", "OpenAI", "OpenRouter"].map((name) => {
+            const preset = PRESET_GROUPS.flatMap((g) => g.items).find((p) => p.label === name);
+            if (!preset) return null;
+            return (
+              <button
+                key={name}
+                onClick={() => {
+                  setVProvider(preset.label);
+                  setVBaseUrl(preset.baseUrl);
+                  setVModel(preset.model);
+                }}
+                className={`rounded border px-3 py-1 text-sm ${vProvider === preset.label ? "!border-primary font-bold" : ""}`}
+              >
+                {name}
+              </button>
+            );
+          })}
+        </div>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-semibold">名稱</span>
+          <input value={vProvider} onChange={(e) => setVProvider(e.target.value)} className="field" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-semibold">Base URL</span>
+          <input value={vBaseUrl} onChange={(e) => setVBaseUrl(e.target.value)} className="field font-mono text-xs" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-semibold">Model</span>
+          <input value={vModel} onChange={(e) => setVModel(e.target.value)} className="field font-mono text-xs" />
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-semibold">API Key（留空儲存 = 清除，回到本地鏈）</span>
+          <input
+            type="password"
+            value={vApiKey}
+            onChange={(e) => setVApiKey(e.target.value)}
+            placeholder="不填就是全免費本地 OCR"
+            className="field"
+          />
+        </label>
+        <button
+          onClick={async () => {
+            setVMsg("");
+            try {
+              const r = await setVision.mutateAsync({ provider: vProvider, baseUrl: vBaseUrl, model: vModel, apiKey: vApiKey });
+              setVApiKey("");
+              setVMsg(r.configured ? "已設定視覺模型。" : "已清除，回到本地鏈。");
+              vision.refetch();
+              status.refetch();
+            } catch (e) {
+              setVMsg(`儲存失敗：${e instanceof Error ? e.message : "未知錯誤"}`);
+            }
+          }}
+          disabled={setVision.isPending}
+          className="btn-primary"
+        >
+          {setVision.isPending ? "儲存中…" : "儲存視覺模型"}
+        </button>
+        {vMsg && <p className="text-sm">{vMsg}</p>}
       </div>
     </div>
   );

@@ -17,6 +17,10 @@ model UserKey {
   baseUrl   String   @default("https://api.openai.com/v1")
   model     String   @default("gpt-4o-mini")
   apiKey    String
+  visionProvider String?
+  visionBaseUrl  String?
+  visionModel    String?
+  visionApiKey   String?
   updatedAt DateTime @updatedAt
 }
 

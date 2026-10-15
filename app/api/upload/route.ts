@@ -1,25 +1,38 @@
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+import mammoth from "mammoth";
 import { db } from "@/lib/db";
+import { ocrPage, pdfPageCount, pdfPageText } from "@/server/ocr";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_CHARS = 60000;
+// 單次上傳最多 OCR 幾頁（本地鏈一頁數秒，避免請求超時）
+const MAX_OCR_PAGES = 20;
 
-async function extractPdf(buf: Buffer): Promise<string> {
-  const doc = await pdfjsLib
-    .getDocument({
-      data: new Uint8Array(buf),
-      useWorkerFetch: false,
-      useSystemFonts: true,
-    })
-    .promise;
+async function extractDocx(buf: Buffer): Promise<string> {
+  const { value } = await mammoth.extractRawText({ buffer: buf });
+  return value;
+}
+
+async function extractPdf(buf: Buffer): Promise<{ text: string; ocrPages: number; skipped: number }> {
+  const total = await pdfPageCount(buf);
   const parts: string[] = [];
-  const pages = Math.min(doc.numPages, 200);
-  for (let i = 1; i <= pages; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
-    parts.push(content.items.map((it) => ("str" in it ? (it.str as string) : "")).join(" "));
+  let ocrPages = 0;
+  let skipped = 0;
+  for (let i = 1; i <= total; i++) {
+    const text = (await pdfPageText(buf, i)).trim();
+    if (text.length >= 30) {
+      parts.push(text);
+      continue;
+    }
+    // 疑似掃描頁：沒什麼文字層
+    if (ocrPages >= MAX_OCR_PAGES) {
+      skipped++;
+      continue;
+    }
+    const { text: ocrText, engine } = await ocrPage(buf, i);
+    ocrPages++;
+    parts.push(ocrText ? `【OCR-第${i}頁·${engine === "vision" ? "視覺" : "本地"}】\n${ocrText}` : `【第${i}頁：空白或無法辨識】`);
   }
-  return parts.join("\n");
+  return { text: parts.join("\n\n"), ocrPages, skipped };
 }
 
 export async function POST(req: Request) {
@@ -36,19 +49,28 @@ export async function POST(req: Request) {
     const lower = name.toLowerCase();
     const buf = Buffer.from(await file.arrayBuffer());
     let text: string;
+    let suffix = "";
     if (lower.endsWith(".pdf")) {
-      text = await extractPdf(buf);
+      const { text: pdfText, ocrPages, skipped } = await extractPdf(buf);
+      text = pdfText;
+      if (ocrPages > 0) suffix = `（${ocrPages} 頁 OCR）`;
+      if (skipped > 0) suffix += `（另有 ${skipped} 頁掃描頁超出上限未處理）`;
+    } else if (lower.endsWith(".docx")) {
+      text = await extractDocx(buf);
+    } else if (lower.endsWith(".doc")) {
+      return Response.json({ error: "舊版 .doc 不支援，請用 Word 另存為 .docx 後上傳" }, { status: 400 });
     } else if (lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".markdown")) {
       text = buf.toString("utf-8");
     } else {
-      return Response.json({ error: "只支援 .txt / .md / .pdf" }, { status: 400 });
+      return Response.json({ error: "只支援 .txt / .md / .docx / .pdf" }, { status: 400 });
     }
     text = text.replace(/\r/g, "").trim();
     if (!text) {
-      return Response.json({ error: "檔案裡沒抓到文字（掃描版 PDF 需要先 OCR）" }, { status: 400 });
+      return Response.json({ error: "檔案裡沒抓到文字（掃描版 PDF 若持續為空，試試視覺 OCR）" }, { status: 400 });
     }
+    const title = (name.replace(/\.[^.]+$/, "").slice(0, 120) || "未命名筆記") + suffix;
     const note = await db.note.create({
-      data: { title: name.replace(/\.[^.]+$/, "").slice(0, 120) || "未命名筆記", rawText: text.slice(0, MAX_CHARS) },
+      data: { title, rawText: text.slice(0, MAX_CHARS) },
     });
     return Response.json({ id: note.id, chars: Math.min(text.length, MAX_CHARS) });
   } catch (e) {
