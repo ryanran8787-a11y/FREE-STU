@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CardIcon, QuizIcon, SparkIcon } from "@/app/icons";
 import { flashcardCount, quizCount } from "@/lib/counts";
 import { downloadText, flashcardsToMd, quizToMd, safeName } from "@/lib/export";
@@ -127,17 +128,93 @@ const TYPE_LABEL: Record<string, string> = { flashcards: "閃卡", quiz: "測驗
 
 type DoneGen = { id: string; type: string; result: string | null; options: string; createdAt: Date };
 
-function SourcesPanel({ title, rawText }: { title: string; rawText: string }) {
+function DeleteNoteButton({ id }: { id: string }) {
+  const router = useRouter();
+  const remove = trpc.note.remove.useMutation();
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function doDelete() {
+    setBusy(true);
+    try {
+      await remove.mutateAsync({ id });
+      router.push("/app/notes");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!confirm) {
+    return (
+      <button onClick={() => setConfirm(true)} title="刪除這份筆記（含所有生成）" className="ml-auto rounded border border-transparent px-2 py-0.5 text-xs text-muted hover:border-red-400 hover:text-red-600">
+        刪除筆記
+      </button>
+    );
+  }
+  return (
+    <span className="ml-auto flex items-center gap-1 text-xs">
+      <span className="text-muted">連同生成一起刪？</span>
+      <button onClick={doDelete} disabled={busy} className="rounded border border-red-400 bg-red-50 px-2 py-0.5 font-semibold text-red-600 disabled:opacity-50">
+        確定刪
+      </button>
+      <button onClick={() => setConfirm(false)} className="rounded border border-line px-2 py-0.5 text-muted hover:border-muted">
+        取消
+      </button>
+    </span>
+  );
+}
+
+function SourcesPanel({ noteId, title, rawText, onChanged }: { noteId: string; title: string; rawText: string; onChanged: () => void }) {
   const paras = useMemo(() => splitParagraphs(rawText), [rawText]);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [srcName, setSrcName] = useState("");
+  const [srcText, setSrcText] = useState("");
+  const [msg, setMsg] = useState("");
+  const appendSource = trpc.note.appendSource.useMutation();
+
+  async function doAppend() {
+    if (!srcText.trim() || appendSource.isPending) return;
+    setMsg("");
+    try {
+      await appendSource.mutateAsync({ id: noteId, name: srcName.trim() || "補充來源", text: srcText });
+      setSrcName("");
+      setSrcText("");
+      setAdding(false);
+      onChanged();
+    } catch (e) {
+      setMsg(`追加失敗：${e instanceof Error ? e.message : "未知錯誤"}`);
+    }
+  }
+
   return (
     <div className="card flex max-h-[70vh] flex-col overflow-hidden">
-      <div className="border-b border-line p-3">
-        <h2 className="text-sm font-bold">來源</h2>
-        <p className="mt-0.5 text-xs text-muted">
-          {paras.length} 段 · {rawText.length.toLocaleString()} 字
-        </p>
+      <div className="flex items-center border-b border-line p-3">
+        <div>
+          <h2 className="text-sm font-bold">來源</h2>
+          <p className="mt-0.5 text-xs text-muted">
+            {paras.length} 段 · {rawText.length.toLocaleString()} 字
+          </p>
+        </div>
+        <button onClick={() => setAdding((v) => !v)} title="追加文字來源" className="ml-auto rounded border border-line px-2 py-0.5 text-xs font-semibold hover:border-muted">
+          ＋ 來源
+        </button>
       </div>
+      {adding && (
+        <div className="flex flex-col gap-2 border-b border-line p-3">
+          <input value={srcName} onChange={(e) => setSrcName(e.target.value)} placeholder="來源名稱（可空，如：第3章講義）" className="field text-xs" />
+          <textarea value={srcText} onChange={(e) => setSrcText(e.target.value)} rows={4} placeholder="貼上來源文字…" className="field resize-y text-xs" />
+          {msg && <p className="text-xs text-red-500">{msg}</p>}
+          <div className="flex gap-2">
+            <button onClick={doAppend} disabled={appendSource.isPending || !srcText.trim()} className="btn-primary !px-3 !py-1 text-xs disabled:opacity-50">
+              {appendSource.isPending ? "追加中…" : "追加進來"}
+            </button>
+            <button onClick={() => setAdding(false)} className="text-xs text-muted hover:text-ink">
+              取消
+            </button>
+          </div>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto p-2">
         {paras.map((p) => {
           const open = openId === p.id;
@@ -245,13 +322,14 @@ export function NoteDetail({ id }: { id: string }) {
       <div className="flex items-center gap-2 text-sm">
         <Link href="/app/notes" className="text-muted hover:text-ink">← 筆記</Link>
         <h1 className="truncate text-lg font-extrabold tracking-tight">{note.data?.title ?? "讀取中…"}</h1>
+        {note.data && <DeleteNoteButton id={note.data.id} />}
       </div>
 
       <div className="grid items-start gap-4 lg:grid-cols-[280px_minmax(0,1fr)_320px]">
         {/* 左：來源 */}
         <div className="order-3 lg:order-1 lg:sticky lg:top-16">
           {note.data ? (
-            <SourcesPanel title={note.data.title} rawText={note.data.rawText} />
+            <SourcesPanel noteId={id} title={note.data.title} rawText={note.data.rawText} onChanged={() => note.refetch()} />
           ) : (
             <div className="card p-4 text-sm text-muted">讀取中…</div>
           )}

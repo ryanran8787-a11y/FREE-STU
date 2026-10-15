@@ -5,6 +5,63 @@ import { useRef, useState } from "react";
 import { BookIcon, UploadIcon } from "@/app/icons";
 import { trpc } from "@/lib/trpc";
 
+function NoteCard({ id, title, createdAt, genCount, checked, onToggle, onDeleted }: {
+  id: string;
+  title: string;
+  createdAt: Date;
+  genCount: number;
+  checked: boolean;
+  onToggle: () => void;
+  onDeleted: () => void;
+}) {
+  const remove = trpc.note.remove.useMutation();
+  const [confirm, setConfirm] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function doDelete() {
+    setBusy(true);
+    try {
+      await remove.mutateAsync({ id });
+      onDeleted();
+    } finally {
+      setBusy(false);
+      setConfirm(false);
+    }
+  }
+
+  return (
+    <div className={`card group flex items-start gap-2 p-4 transition-shadow hover:shadow-md ${checked ? "!border-primary" : ""}`}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={onToggle}
+        title="勾選以合併"
+        className="mt-1 h-4 w-4 accent-[#059669]"
+      />
+      <Link href={`/app/notes/${id}`} className="flex-1">
+        <div className="text-sm font-semibold transition-colors group-hover:text-accent">{title}</div>
+        <div className="mt-1 text-xs text-muted">
+          {new Date(createdAt).toLocaleString("zh-TW")} · {genCount} 個生成
+        </div>
+      </Link>
+      {confirm ? (
+        <span className="flex shrink-0 items-center gap-1">
+          <button onClick={doDelete} disabled={busy} className="rounded border border-red-400 bg-red-50 px-2 py-0.5 text-xs font-semibold text-red-600 disabled:opacity-50">
+            確定刪
+          </button>
+          <button onClick={() => setConfirm(false)} className="rounded border border-line px-2 py-0.5 text-xs text-muted hover:border-muted">
+            取消
+          </button>
+        </span>
+      ) : (
+        <button onClick={() => setConfirm(true)} title="刪除筆記（含所有生成）" className="shrink-0 rounded border border-transparent px-2 py-0.5 text-xs text-muted opacity-0 transition-opacity hover:border-red-400 hover:text-red-600 group-hover:opacity-100">
+          刪除
+        </button>
+      )}
+    </div>
+  );
+}
+
 export default function NotesPage() {
   const notes = trpc.note.list.useQuery();
   const create = trpc.note.create.useMutation();
@@ -15,6 +72,33 @@ export default function NotesPage() {
   const [merging, setMerging] = useState(false);
   const [checked, setChecked] = useState<Set<string>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
+
+  async function save() {
+    if (!rawText.trim() || create.isPending) return;
+    await create.mutateAsync({ title: title.trim() || "未命名筆記", rawText });
+    setTitle("");
+    setRawText("");
+    notes.refetch();
+  }
+
+  async function upload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadMsg("上傳解析中…");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/upload", { method: "POST", body: form });
+      const json = (await res.json()) as { id?: string; chars?: number; error?: string };
+      if (!res.ok || !json.id) throw new Error(json.error ?? "上傳失敗");
+      setUploadMsg(`已存成筆記（${json.chars} 字），跳轉中…`);
+      notes.refetch();
+      window.location.href = `/app/notes/${json.id}`;
+    } catch (err) {
+      setUploadMsg(`失敗：${err instanceof Error ? err.message : "未知錯誤"}`);
+    }
+  }
 
   function toggle(id: string) {
     setChecked((prev) => {
@@ -45,33 +129,6 @@ export default function NotesPage() {
       setUploadMsg(`合併失敗：${err instanceof Error ? err.message : "未知錯誤"}`);
     } finally {
       setMerging(false);
-    }
-  }
-
-  async function save() {
-    if (!rawText.trim() || create.isPending) return;
-    await create.mutateAsync({ title: title.trim() || "未命名筆記", rawText });
-    setTitle("");
-    setRawText("");
-    notes.refetch();
-  }
-
-  async function upload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setUploadMsg("上傳解析中…");
-    try {
-      const form = new FormData();
-      form.append("file", file);
-      const res = await fetch("/api/upload", { method: "POST", body: form });
-      const json = (await res.json()) as { id?: string; chars?: number; error?: string };
-      if (!res.ok || !json.id) throw new Error(json.error ?? "上傳失敗");
-      setUploadMsg(`已存成筆記（${json.chars} 字），跳轉中…`);
-      notes.refetch();
-      window.location.href = `/app/notes/${json.id}`;
-    } catch (err) {
-      setUploadMsg(`失敗：${err instanceof Error ? err.message : "未知錯誤"}`);
     }
   }
 
@@ -123,21 +180,23 @@ export default function NotesPage() {
       )}
       <div className="grid gap-3 md:grid-cols-2">
         {notes.data?.map((n) => (
-          <div key={n.id} className={`card group flex items-start gap-2 p-4 transition-shadow hover:shadow-md ${checked.has(n.id) ? "!border-primary" : ""}`}>
-            <input
-              type="checkbox"
-              checked={checked.has(n.id)}
-              onChange={() => toggle(n.id)}
-              title="勾選以合併"
-              className="mt-1 h-4 w-4 accent-[#059669]"
-            />
-            <Link href={`/app/notes/${n.id}`} className="flex-1">
-              <div className="text-sm font-semibold transition-colors group-hover:text-accent">{n.title}</div>
-              <div className="mt-1 text-xs text-muted">
-                {new Date(n.createdAt).toLocaleString("zh-TW")} · {n._count.generations} 個生成
-              </div>
-            </Link>
-          </div>
+          <NoteCard
+            key={n.id}
+            id={n.id}
+            title={n.title}
+            createdAt={n.createdAt}
+            genCount={n._count.generations}
+            checked={checked.has(n.id)}
+            onToggle={() => toggle(n.id)}
+            onDeleted={() => {
+              setChecked((prev) => {
+                const next = new Set(prev);
+                next.delete(n.id);
+                return next;
+              });
+              notes.refetch();
+            }}
+          />
         ))}
       </div>
       {notes.data?.length === 0 && (

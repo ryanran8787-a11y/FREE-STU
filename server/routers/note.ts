@@ -31,4 +31,20 @@ export const noteRouter = router({
       select: { id: true, title: true, rawText: true },
     });
   }),
+
+  appendSource: publicProcedure
+    .input(z.object({ id: z.string(), name: z.string().min(1).max(120), text: z.string().min(1).max(60000) }))
+    .mutation(async ({ input }) => {
+      const note = await db.note.findUnique({ where: { id: input.id } });
+      if (!note) throw new Error("找不到筆記");
+      const section = `\n\n————\n\n【來源：${input.name}】\n\n${input.text.trim()}`;
+      const rawText = (note.rawText + section).slice(0, 120000);
+      await db.note.update({ where: { id: input.id }, data: { rawText } });
+      return { ok: true, chars: rawText.length };
+    }),
+
+  remove: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+    await db.note.delete({ where: { id: input.id } });
+    return { ok: true };
+  }),
 });
