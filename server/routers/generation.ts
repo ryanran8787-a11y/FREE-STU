@@ -7,6 +7,13 @@ import { flashcardCount, quizCount, type CountLevel } from "@/lib/counts";
 import { chatCompletion, getKeyOrThrow, logUsage, parseJsonArray } from "@/server/llm";
 import { searchNotes } from "@/lib/retrieval";
 import {
+  BUILTIN_TEMPLATES,
+  buildSimplePrompt,
+  renderCustomPrompt,
+  type SimpleLength,
+  type SimpleMethod,
+} from "@/server/custom";
+import {
   DIALOGUE_CHAR_CAP,
   READ_CHAR_CAP,
   splitChunks,
@@ -16,12 +23,15 @@ import {
 } from "@/server/podcast";
 import { publicProcedure, router } from "@/server/trpc";
 
-const generationType = z.enum(["flashcards", "quiz", "mindmap", "podcast"]);
+const generationType = z.enum(["flashcards", "quiz", "mindmap", "podcast", "custom"]);
 const countLevel = z.enum(["less", "standard", "more"]);
 const difficulty = z.enum(["easy", "medium", "hard"]);
 const language = z.enum(["zh-Hant", "zh-Hans", "en"]);
 const podcastMode = z.enum(["read", "dialogue"]);
 const voicePair = z.enum(["cn", "tw"]);
+const customKind = z.enum(["simple", "template", "raw"]);
+const customMethod = z.enum(["explain", "points", "table", "story"]);
+const customLength = z.enum(["short", "standard", "long"]);
 
 const DIFF_WORDS: Record<string, string> = {
   easy: "簡單（基礎記憶、定義）",
@@ -43,6 +53,12 @@ export type GenOptions = {
   customCount?: number;
   podcastMode?: z.infer<typeof podcastMode>;
   voicePair?: z.infer<typeof voicePair>;
+  customKind?: z.infer<typeof customKind>;
+  customMethod?: z.infer<typeof customMethod>;
+  customLength?: z.infer<typeof customLength>;
+  customHintFirst?: boolean;
+  customTemplateId?: string;
+  customBody?: string;
 };
 
 function buildPrompt(type: z.infer<typeof generationType>, o: GenOptions, n: number | null): string {
@@ -121,6 +137,75 @@ export function parseDialogue(text: string): PodLine[] {
   return lines;
 }
 
+async function runCustom(id: string, note: { title: string; rawText: string }, options: Partial<GenOptions>) {
+  try {
+    const kind = options.customKind === "template" || options.customKind === "raw" ? options.customKind : "simple";
+    const lang = options.language === "zh-Hans" || options.language === "en" ? options.language : "zh-Hant";
+    const langName = LANG_WORDS[lang];
+    const diffWord = options.difficulty === "easy" ? "簡單" : options.difficulty === "hard" ? "困難" : "中等";
+    const focus = typeof options.focus === "string" ? options.focus : "";
+    const chars = note.rawText.length;
+    const custom = typeof options.customCount === "number" ? Math.min(50, Math.max(1, Math.floor(options.customCount))) : undefined;
+    const n = custom ?? flashcardCount(chars, (options.count === "less" || options.count === "more" ? options.count : "standard") as CountLevel);
+    const key = await getKeyOrThrow();
+    let prompt: string;
+    if (kind === "simple") {
+      const method: SimpleMethod =
+        options.customMethod === "points" || options.customMethod === "table" || options.customMethod === "story"
+          ? options.customMethod
+          : "explain";
+      const length: SimpleLength = options.customLength === "short" || options.customLength === "long" ? options.customLength : "standard";
+      prompt = buildSimplePrompt(method, length, options.customHintFirst === true, langName, focus) + note.rawText.slice(0, 12000);
+    } else {
+      let body: string;
+      if (kind === "template") {
+        const tid = options.customTemplateId || "";
+        const builtin = BUILTIN_TEMPLATES.find((t) => t.id === tid);
+        if (builtin) {
+          body = builtin.body;
+        } else {
+          const tpl = await db.customTemplate.findUnique({ where: { id: tid } });
+          if (!tpl) throw new Error("找不到這個模板（可能已被刪除）");
+          body = tpl.body;
+        }
+      } else {
+        body = (options.customBody || "").trim();
+        if (!body) throw new Error("自訂 Prompt 是空的");
+      }
+      const paras = headParagraphs(note.rawText);
+      prompt = renderCustomPrompt(body, {
+        note: note.rawText.slice(0, 12000),
+        paras: paras.map((p) => `[${p.id}] ${p.text}`).join("\n"),
+        focus,
+        count: n,
+        difficulty: diffWord,
+        language: langName,
+      });
+    }
+    const { text, usage } = await chatCompletion({
+      baseUrl: key.baseUrl,
+      apiKey: key.apiKey,
+      model: key.model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.5,
+    });
+    await logUsage("custom", key.model, usage);
+    await db.generation.update({
+      where: { id },
+      data: {
+        status: "done",
+        result: text.trim().slice(0, 40000),
+        options: JSON.stringify({ ...options, customKind: kind, resolvedCount: n, chars }),
+      },
+    });
+  } catch (e) {
+    await db.generation.update({
+      where: { id },
+      data: { status: "error", error: e instanceof Error ? e.message.slice(0, 500) : "未知錯誤" },
+    });
+  }
+}
+
 async function runPodcast(id: string, note: { title: string; rawText: string }, options: Partial<GenOptions>) {
   try {
     const mode = options.podcastMode === "dialogue" ? "dialogue" : "read";
@@ -186,15 +271,16 @@ async function runGeneration(id: string) {
     include: { note: true },
   });
   if (!gen || gen.status !== "running") return;
-  // 播客走獨立分支（寫稿→TTS→存檔）
-  if (gen.type === "podcast") {
+  // 播客 / 自訂走獨立分支
+  if (gen.type === "podcast" || gen.type === "custom") {
     let options: Partial<GenOptions> = {};
     try {
       options = JSON.parse(gen.options || "{}") as Partial<GenOptions>;
     } catch {
       /* ignore */
     }
-    await runPodcast(id, { title: gen.note.title, rawText: gen.note.rawText }, options);
+    if (gen.type === "podcast") await runPodcast(id, { title: gen.note.title, rawText: gen.note.rawText }, options);
+    else await runCustom(id, { title: gen.note.title, rawText: gen.note.rawText }, options);
     return;
   }
   try {
@@ -279,6 +365,12 @@ export const generationRouter = router({
         customCount: z.number().int().min(1).max(50).optional(),
         podcastMode: podcastMode.default("read"),
         voicePair: voicePair.default("cn"),
+        customKind: customKind.default("simple"),
+        customMethod: customMethod.default("explain"),
+        customLength: customLength.default("standard"),
+        customHintFirst: z.boolean().default(false),
+        customTemplateId: z.string().max(100).default(""),
+        customBody: z.string().max(8000).default(""),
       }),
     )
     .mutation(async ({ input }) => {
@@ -289,7 +381,7 @@ export const generationRouter = router({
           noteId: input.noteId,
           type: input.type,
           status: "pending",
-          options: JSON.stringify({ count: input.count, difficulty: input.difficulty, language: input.language, focus: input.focus, customCount: input.customCount, podcastMode: input.podcastMode, voicePair: input.voicePair }),
+          options: JSON.stringify({ count: input.count, difficulty: input.difficulty, language: input.language, focus: input.focus, customCount: input.customCount, podcastMode: input.podcastMode, voicePair: input.voicePair, customKind: input.customKind, customMethod: input.customMethod, customLength: input.customLength, customHintFirst: input.customHintFirst, customTemplateId: input.customTemplateId, customBody: input.customBody }),
         },
       });
       return { id: gen.id };

@@ -11,6 +11,8 @@ import { trpc } from "@/lib/trpc";
 import { ChatBox } from "@/app/(saas)/app/chat/ChatBox";
 import { MindmapView } from "./MindmapView";
 import { PodcastView } from "./PodcastView";
+import { CustomView } from "./CustomView";
+import { CustomSection } from "./CustomSection";
 
 type Gen = { id: string; type: string; status: string; result: string | null; error: string | null };
 
@@ -117,6 +119,7 @@ function Quiz({ result, title }: { result: string; title: string }) {
 function GenView({ result, type, sources, paras, title, genId, masteredInit, onSaved, onGenerate }: { result: string; type: string; sources: Record<string, string[]>; paras: { id: string; text: string }[]; title: string; genId: string; masteredInit: string[]; onSaved: () => void; onGenerate?: (type: "flashcards" | "quiz", focus: string) => void }) {
   if (type === "mindmap") return <MindmapView result={result} sources={sources} paras={paras} onGenerate={onGenerate} title={title} genId={genId} masteredInit={masteredInit} onSaved={onSaved} />;
   if (type === "podcast") return <PodcastView result={result} title={title} genId={genId} />;
+  if (type === "custom") return <CustomView result={result} title={title} paras={paras} />;
   try {
     const arr = JSON.parse(result) as Record<string, unknown>[];
     if (arr.length > 0 && "options" in arr[0]) return <Quiz result={result} title={title} />;
@@ -126,7 +129,7 @@ function GenView({ result, type, sources, paras, title, genId, masteredInit, onS
   }
 }
 
-const TYPE_LABEL: Record<string, string> = { flashcards: "閃卡", quiz: "測驗", mindmap: "心智圖", podcast: "播客" };
+const TYPE_LABEL: Record<string, string> = { flashcards: "閃卡", quiz: "測驗", mindmap: "心智圖", podcast: "播客", custom: "自訂" };
 
 type DoneGen = { id: string; type: string; result: string | null; options: string; createdAt: Date };
 
@@ -273,7 +276,7 @@ export function NoteDetail({ id }: { id: string }) {
     }
   }, [poll.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function gen(type: "flashcards" | "quiz" | "mindmap" | "podcast", focusOverride?: string, pod?: { mode: "read" | "dialogue"; pair: "cn" | "tw" }) {
+  async function gen(type: "flashcards" | "quiz" | "mindmap" | "podcast" | "custom", focusOverride?: string, pod?: { mode: "read" | "dialogue"; pair: "cn" | "tw" }) {
     const n = parseInt(custom, 10);
     const res = await start.mutateAsync({
       noteId: id,
@@ -350,7 +353,7 @@ export function NoteDetail({ id }: { id: string }) {
           {busy && (
             <div className="card flex items-center gap-3 p-4 text-sm font-medium">
               <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-ink" />
-              {live?.type === "podcast" ? "播客製作中…（逐段合成，約1-3分鐘，好了自動出現）" : "AI 出題中…（好了自動出現）"}
+              {live?.type === "podcast" ? "播客製作中…（逐段合成，約1-3分鐘，好了自動出現）" : live?.type === "custom" ? "自訂生成中…（好了自動出現）" : "AI 出題中…（好了自動出現）"}
             </div>
           )}
           {live?.status === "error" && (
@@ -375,7 +378,7 @@ export function NoteDetail({ id }: { id: string }) {
           {!busy && !(live?.status === "done" && live.result) && selected && (
             <div>
               <h2 className="mb-2 flex items-center gap-1.5 font-bold">
-                {selected.type === "flashcards" ? <CardIcon size={16} /> : selected.type === "mindmap" ? <SparkIcon size={16} /> : selected.type === "podcast" ? <PodIcon size={16} /> : <QuizIcon size={16} />}
+                {selected.type === "flashcards" ? <CardIcon size={16} /> : selected.type === "mindmap" ? <SparkIcon size={16} /> : selected.type === "podcast" ? <PodIcon size={16} /> : selected.type === "custom" ? <SparkIcon size={16} /> : <QuizIcon size={16} />}
                 {TYPE_LABEL[selected.type] ?? selected.type}
               </h2>
               <GenView
@@ -455,6 +458,21 @@ export function NoteDetail({ id }: { id: string }) {
               </button>
               <p className="text-[11px] leading-relaxed text-muted">主題聚焦會一起吃：對談圍繞它聊，朗讀只讀相關段落。</p>
             </div>
+            {note.data && (
+              <CustomSection
+                noteId={id}
+                focus={focus}
+                count={count}
+                level={level}
+                lang={lang}
+                rawText={note.data.rawText}
+                busy={!!busy}
+                onStart={(gid) => {
+                  setLiveType("custom");
+                  setPollId(gid);
+                }}
+              />
+            )}
           </div>
 
           {doneGens.length > 0 && (
@@ -469,7 +487,7 @@ export function NoteDetail({ id }: { id: string }) {
                       onClick={() => setSelectedId(g.id)}
                       className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-paper ${active ? "bg-paper font-semibold" : ""}`}
                     >
-                      <span className="text-muted">{g.type === "flashcards" ? <CardIcon size={14} /> : g.type === "mindmap" ? <SparkIcon size={14} /> : g.type === "podcast" ? <PodIcon size={14} /> : <QuizIcon size={14} />}</span>
+                      <span className="text-muted">{g.type === "flashcards" ? <CardIcon size={14} /> : g.type === "mindmap" ? <SparkIcon size={14} /> : g.type === "podcast" ? <PodIcon size={14} /> : g.type === "custom" ? <SparkIcon size={14} /> : <QuizIcon size={14} />}</span>
                       <span>{TYPE_LABEL[g.type] ?? g.type}</span>
                       <span className="ml-auto text-muted">{new Date(g.createdAt).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric" })}</span>
                     </button>
