@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-paper: #fafafa;
   --color-card: #ffffff;
@@ -14,6 +16,34 @@
   --color-sun: #f5a623;
 
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+/* 深色：Vercel 式黑底。站內一律吃 token，這裡翻轉就全站翻轉。 */
+.dark {
+  --color-paper: #0a0a0a;
+  --color-card: #141414;
+  --color-ink: #ededed;
+  --color-muted: #a1a1a1;
+  --color-line: #262626;
+  --color-primary: #10b981;
+  --color-primary-deep: #059669;
+  --color-primary-soft: rgb(16 185 129 / 0.12);
+  --color-accent: #3291ff;
+  --color-accent-soft: rgb(50 145 255 / 0.12);
+}
+
+/* 反白小件（logo、已選中的段選鈕、使用者氣泡）：淺色黑底白字，深色白底黑字 */
+.invert-chip {
+  background: var(--color-ink);
+  color: var(--color-paper);
+}
+
+/* 深色下 Tailwind 紅色系太刺眼，壓暗（刪除確認、答錯選項、錯誤字） */
+.dark .bg-red-50 {
+  background-color: rgb(127 29 29 / 0.35);
+}
+.dark .text-red-600 {
+  color: #f87171;
 }
 
 html {
@@ -70,7 +100,7 @@ body {
   gap: 0.5rem;
   border-radius: 6px;
   border: 1px solid var(--color-line);
-  background: #fff;
+  background: var(--color-card);
   color: var(--color-ink);
   font-weight: 500;
   font-size: 14px;
@@ -86,7 +116,7 @@ body {
   width: 100%;
   border-radius: 6px;
   border: 1px solid var(--color-line);
-  background: #fff;
+  background: var(--color-card);
   padding: 0.55rem 0.75rem;
   font-size: 14px;
   outline: none;

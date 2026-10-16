@@ -204,7 +204,7 @@ export function MindmapView({
           <button
             onClick={() => setSelftest((v) => !v)}
             title="遮住葉節點文字，自己回想再展開對答案"
-            className={`rounded-full border px-2.5 py-1 font-semibold transition-colors ${selftest ? "border-ink bg-ink text-white" : "border-line hover:border-muted"}`}
+            className={`rounded-full border px-2.5 py-1 font-semibold transition-colors ${selftest ? "invert-chip border-ink" : "border-line hover:border-muted"}`}
           >
             {selftest ? "自測中…點我結束" : "自測模式"}
           </button>
@@ -219,7 +219,7 @@ export function MindmapView({
               <button
                 key={t}
                 onClick={() => setSelected((prev) => (prev === t ? null : t))}
-                className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${selected === t ? "border-ink bg-ink text-white" : "border-line hover:border-muted"} ${mastered.has(t) ? "line-through opacity-60" : ""}`}
+                className={`rounded-full border px-2.5 py-1 text-xs transition-colors ${selected === t ? "invert-chip border-ink" : "border-line hover:border-muted"} ${mastered.has(t) ? "line-through opacity-60" : ""}`}
               >
                 {mastered.has(t) ? "✓ " : ""}{t}
               </button>
@@ -256,7 +256,7 @@ export function MindmapView({
                   </span>
                 )}
                 {mastered.has(selected) && (
-                  <span className="rounded-full bg-ink px-2 py-0.5 text-xs font-semibold text-white">✓ 已理解</span>
+                  <span className="invert-chip rounded-full px-2 py-0.5 text-xs font-semibold">✓ 已理解</span>
                 )}
                 <span className="ml-auto flex items-center gap-1">
                   <button onClick={toggleMastered} title="標記已理解 / 取消" className="rounded border border-line px-2 py-0.5 text-xs font-semibold hover:border-muted">

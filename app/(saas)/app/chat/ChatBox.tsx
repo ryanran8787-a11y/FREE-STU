@@ -127,7 +127,7 @@ export function ChatBox({
         {msgs.map((m, i) =>
           m.role === "user" ? (
             <div key={i} className="rise flex justify-end">
-              <div className="max-w-[85%] rounded-lg rounded-br-sm bg-ink px-3.5 py-2.5 text-sm leading-relaxed text-white">
+              <div className="invert-chip max-w-[85%] rounded-lg rounded-br-sm px-3.5 py-2.5 text-sm leading-relaxed">
                 {m.text}
               </div>
             </div>
@@ -165,7 +165,7 @@ export function ChatBox({
           onClick={() => send()}
           disabled={streaming || !input.trim()}
           aria-label="送出"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-ink text-white transition-opacity disabled:opacity-30"
+          className="invert-chip flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-opacity disabled:opacity-30"
         >
           <ArrowUp size={17} strokeWidth={2.5} />
         </button>

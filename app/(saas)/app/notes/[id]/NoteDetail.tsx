@@ -291,7 +291,7 @@ export function NoteDetail({ id }: { id: string }) {
           <button
             key={o.v}
             onClick={() => onChange(o.v)}
-            className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${i > 0 ? "border-l border-line" : ""} ${value === o.v ? "bg-ink text-white" : "bg-card hover:bg-paper"}`}
+            className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${i > 0 ? "border-l border-line" : ""} ${value === o.v ? "invert-chip" : "bg-card hover:bg-paper"}`}
           >
             {o.label}
           </button>

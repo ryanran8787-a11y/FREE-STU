@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Suspense } from "react";
 import { GraduationCap } from "lucide-react";
 import { TrpcProvider } from "@/app/TrpcProvider";
+import { ThemeToggle } from "@/app/ThemeToggle";
 import { trpc } from "@/lib/trpc";
 
 const LINKS = [
@@ -30,7 +31,7 @@ function Nav() {
     <nav className="sticky top-0 z-10 border-b border-line bg-paper/85 backdrop-blur">
       <div className="mx-auto flex w-full max-w-[1600px] items-center gap-1 p-3">
         <Link href="/" className="mr-3 flex items-center gap-1.5 text-sm font-bold tracking-tight">
-          <span className="flex h-6 w-6 items-center justify-center rounded-md bg-ink text-white">
+          <span className="invert-chip flex h-6 w-6 items-center justify-center rounded-md">
             <GraduationCap size={15} strokeWidth={2} />
           </span>
           NEXT
@@ -41,7 +42,7 @@ function Nav() {
             <Link
               key={l.href}
               href={l.href}
-              className={`rounded-md px-3 py-1.5 text-sm transition-colors ${
+              className={`rounded-md px-2 py-1.5 text-sm transition-colors md:px-3 ${
                 active ? "bg-paper font-semibold text-ink" : "text-muted hover:text-ink"
               }`}
             >
@@ -50,6 +51,7 @@ function Nav() {
           );
         })}
         <span className="ml-auto flex items-center gap-1.5 text-xs text-muted">
+          <ThemeToggle />
           <KeyDot />
           Key
         </span>

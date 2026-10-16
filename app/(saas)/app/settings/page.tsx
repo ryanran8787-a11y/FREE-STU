@@ -48,6 +48,81 @@ const PRESET_GROUPS: { title: string; items: Preset[] }[] = [
   },
 ];
 
+function CopyBtn({ text, label }: { text: string; label: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand("copy");
+          ta.remove();
+        }
+        setDone(true);
+        setTimeout(() => setDone(false), 1500);
+      }}
+      className="shrink-0 rounded border border-line px-2 py-0.5 text-xs font-semibold text-muted hover:border-muted hover:text-ink"
+    >
+      {done ? "已複製" : label}
+    </button>
+  );
+}
+
+/** 手機連線：同 WiFi 直開 / Tailscale（主推）/ Cloudflare Tunnel。PWA 安裝要 HTTPS（Tunnel 或 Tailscale配TLS），純 LAN-IP 只能用主畫面書籤。 */
+function PhoneConnect() {
+  const lan = trpc.system.lanUrls.useQuery();
+  const fwCmd = 'New-NetFirewallRule -DisplayName "FREE-STU" -Direction Inbound -LocalPort 3001 -Protocol TCP -Action Allow';
+  return (
+    <div className="card flex flex-col gap-3 p-4 md:p-5">
+      <h2 className="font-extrabold">手機連線（PWA）</h2>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-sm font-semibold">1. 同 WiFi 直開（零設定，先驗版面）</span>
+        {lan.isLoading ? (
+          <p className="text-sm text-muted">讀取本機 IP…</p>
+        ) : (lan.data?.urls ?? []).length === 0 ? (
+          <p className="text-sm text-muted">抓不到 LAN IP，電腦先連上 WiFi 再重整。</p>
+        ) : (
+          lan.data!.urls.map((u) => (
+            <div key={u} className="flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate font-mono text-xs">{u}</code>
+              <CopyBtn text={u} label="複製" />
+            </div>
+          ))
+        )}
+        <p className="text-xs leading-relaxed text-muted">手機跟電腦連同一個 WiFi，瀏覽器開上面網址。開的是你電腦的 prod（:3001），不是 dev。手機打不開？往下看防火牆。</p>
+      </div>
+      <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+        <span className="text-sm font-semibold">2. Tailscale（主推，出門也能用）</span>
+        <ol className="list-decimal space-y-1 pl-5 text-xs leading-relaxed text-muted">
+          <li>電腦和手機都裝 Tailscale，登入同一個帳號。</li>
+          <li>手機瀏覽器開 <code className="font-mono">http://電腦的-Tailscale-IP:3001/app/notes</code>（IP 去 Tailscale 管理頁看，100 開頭）。</li>
+          <li>手機「分享 → 加入主畫面」，就有全螢幕圖示。想要正式可安裝 PWA，電腦再跑 <code className="font-mono">tailscale serve --https=443 http://localhost:3001</code> 配 TLS。</li>
+        </ol>
+      </div>
+      <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+        <span className="text-sm font-semibold">3. Cloudflare Tunnel（免裝 App，要 HTTPS 時）</span>
+        <div className="flex items-center gap-2">
+          <code className="min-w-0 flex-1 truncate font-mono text-xs">cloudflared tunnel --url http://localhost:3001</code>
+          <CopyBtn text="cloudflared tunnel --url http://localhost:3001" label="複製" />
+        </div>
+        <p className="text-xs leading-relaxed text-muted">跑起來會給一組 https 網址，任何網路都能開、可安裝 PWA。免費臨時網址重開會變；流量會經過 Cloudflare。</p>
+      </div>
+      <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+        <span className="text-sm font-semibold">連不上？放行 Windows 防火牆（管理員 PowerShell 跑一次）</span>
+        <div className="flex items-center gap-2">
+          <code className="min-w-0 flex-1 truncate font-mono text-xs">{fwCmd}</code>
+          <CopyBtn text={fwCmd} label="複製" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const DEFAULT_PRESET = PRESET_GROUPS[0].items[0];
 
 export default function SettingsPage() {
@@ -256,6 +331,8 @@ export default function SettingsPage() {
         </button>
         {vMsg && <p className="text-sm">{vMsg}</p>}
       </div>
+
+      <PhoneConnect />
     </div>
   );
 }

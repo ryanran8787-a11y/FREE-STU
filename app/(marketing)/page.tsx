@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { GraduationCap } from "lucide-react";
+import { ThemeToggle } from "@/app/ThemeToggle";
 import { CardIcon, ChatIcon, KeyIcon, QuizIcon } from "@/app/icons";
 
 const FEATURES = [
@@ -17,15 +18,16 @@ const STEPS = [
 
 export default function LandingPage() {
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col bg-paper">
       <header className="mx-auto flex w-full max-w-4xl items-center justify-between px-6 py-4">
         <span className="flex items-center gap-1.5 text-base font-bold tracking-tight">
-          <span className="flex h-7 w-7 items-center justify-center rounded-md bg-ink text-white">
+          <span className="invert-chip flex h-7 w-7 items-center justify-center rounded-md">
             <GraduationCap size={18} strokeWidth={2} />
           </span>
           NEXT
         </span>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
           <Link href="/app/settings" className="btn-ghost !px-4 !py-1.5 text-sm">
             設定 Key
           </Link>
@@ -62,7 +64,7 @@ export default function LandingPage() {
         <div className="mt-16 grid w-full gap-3 md:grid-cols-2">
           {FEATURES.map((f, i) => (
             <div key={f.title} className="card rise p-6" style={{ animationDelay: `${i * 60}ms` }}>
-              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-[#F4F4F5] text-ink">
+              <div className="flex h-10 w-10 items-center justify-center rounded-md bg-paper text-ink">
                 {f.icon}
               </div>
               <h3 className="mt-3 text-base font-semibold leading-snug">{f.title}</h3>

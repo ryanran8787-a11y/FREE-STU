@@ -140,7 +140,7 @@ export default function NotesPage() {
       </div>
 
       <div className="card flex flex-col gap-3 p-4 md:p-5">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-bold">貼文字</h2>
           <span className="text-xs text-muted">或</span>
           <button onClick={() => fileRef.current?.click()} className="btn-ghost !px-3 !py-1.5 text-xs">
