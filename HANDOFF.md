@@ -14,11 +14,13 @@
 ## 已落地功能
 對話（BYOK 10 家 preset、筆記選擇器、段落引用 `[pN]` chip、跨筆記 RAG `[sN]`、Markdown 渲染、SSE 串流+停止鈕）／筆記（貼文、上傳 txt/md/docx/pdf、刪除、追加來源、多選合併）／生成（閃卡翻卡、測驗+解析+ABCD、數量公式按字數+自訂、難度/語言/主題聚焦、心智圖 markmap+來源映射+點擊溯源+改名刪除+已理解+自測+節點出題）／用量記賬／匯出（MD/SVG/PNG 降級）／OCR 雙軌（本地 tesseract chi_tra+eng／視覺 key）／設定頁（主 key + 視覺 key）／三欄工作台＋全幅
 
-## 剛做完（HEAD `11a9dbe`）
-播客 TTS（Phase 2 直上）：`podcast` generation type，朗讀（免費）/對談（花主 Key token）雙模式，預設大陸腔，自帶 Edge 客戶端 `server/edgeTts.ts`。
+## 剛做完（HEAD `0969069`）
+深色+PWA+手機連線卡。深色：`.dark` 翻轉 globals.css tokens + `invert-chip`（取代所有 bg-ink text-white）+ 紅色壓暗 shim；三段切 localStorage `free-stu-theme`，預設跟系統。
+PWA：手寫 `public/sw.js`（API 永遠只走網路；**發版改靜態殼要 bump `CACHE` 名**），manifest.ts，icons 是 canvas 自繪 `public/icons/`，SwRegister 只 prod+安全上下文註冊。手機連線卡在設定頁（LAN IP 自動抓，Tailscale 主推）。
+播客 TTS（`11a9dbe`）：`podcast` generation type，朗讀（免費，支援聚焦挑段）/對談（花主 Key token）雙模式，預設大陸腔，自帶 Edge 客戶端 `server/edgeTts.ts`。
 **大坑**：2026-10-10 起微軟搬遷端點，舊 speech.platform.bing.com 握手 403 → 改打 `wss://api.msedgeservices.com/.../websocket/v1` + v2 Sec-MS-GEC（演算法 port 自 readest），舊 URL 留作降級。Turbopack 吃不下 `.ts` 主入口的 npm 包（edge-tts 已卸載）。
 音檔 `data/podcasts/<genId>.mp3`（gitignore），`/api/podcast/[id]` 播+Range+下載，刪筆記連帶清檔。
-OCR 雙軌 + Word 上傳 + 視覺設定卡。語言包在 `%LOCALAPPDATA%\free-stu\tessdata`（標準版，非 fast）。待使用者實測中文掃描 PDF（20 份）。
+OCR 雙軌 + Word 上傳 + 視覺設定卡。語言包在 `%LOCALAPPDATA%\free-stu\tessdata`（標準版，非 fast）。使用者已測 10 份 PDF 全過，會不定時續測。
 
 ## 下一步（按順序）
 1. 等使用者 OCR 實測回饋
