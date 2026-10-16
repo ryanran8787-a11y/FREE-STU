@@ -448,6 +448,7 @@ export function NoteDetail({ id }: { id: string }) {
               <button onClick={() => gen("podcast", undefined, { mode: podMode, pair: podPair })} disabled={start.isPending || !!busy} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
                 <PodIcon size={16} /> 生成播客
               </button>
+              <p className="text-[11px] leading-relaxed text-muted">主題聚焦會一起吃：對談圍繞它聊，朗讀只讀相關段落。</p>
             </div>
           </div>
 

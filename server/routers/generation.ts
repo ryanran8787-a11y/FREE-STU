@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { extractSourceMap, headParagraphs } from "@/lib/paras";
 import { flashcardCount, quizCount, type CountLevel } from "@/lib/counts";
 import { chatCompletion, getKeyOrThrow, logUsage, parseJsonArray } from "@/server/llm";
+import { searchNotes } from "@/lib/retrieval";
 import {
   DIALOGUE_CHAR_CAP,
   READ_CHAR_CAP,
@@ -86,13 +87,15 @@ export function parseDialogue(text: string): PodLine[] {
   return lines;
 }
 
-async function runPodcast(id: string, rawText: string, options: Partial<GenOptions>) {
+async function runPodcast(id: string, note: { title: string; rawText: string }, options: Partial<GenOptions>) {
   try {
     const mode = options.podcastMode === "dialogue" ? "dialogue" : "read";
     const pair: VoicePairId = options.voicePair === "tw" ? "tw" : "cn";
     const lang = options.language === "zh-Hans" || options.language === "en" ? options.language : "zh-Hant";
     const focus = typeof options.focus === "string" ? options.focus : "";
+    const rawText = note.rawText;
     let lines: PodLine[];
+    let focused = false;
     if (mode === "dialogue") {
       const key = await getKeyOrThrow();
       const langName = lang === "zh-Hans" ? "简体中文" : lang === "en" ? "English" : "繁體中文";
@@ -107,7 +110,18 @@ async function runPodcast(id: string, rawText: string, options: Partial<GenOptio
       lines = parseDialogue(text);
       if (lines.length === 0) throw new Error("對話稿產生失敗（模型沒照格式回，再試一次）");
     } else {
-      const body = rawText.slice(0, READ_CHAR_CAP).trim();
+      // 朗讀：有聚焦就只讀相關段落（TF 檢索，按原文順序拼回），沒命中才退回全文
+      const q = focus.trim().slice(0, 500);
+      let body = "";
+      if (q) {
+        const hits = searchNotes([{ id, title: note.title, rawText }], q, 50, READ_CHAR_CAP);
+        if (hits.length > 0) {
+          hits.sort((a, b) => parseInt(a.paraId.slice(1), 10) - parseInt(b.paraId.slice(1), 10));
+          body = hits.map((h) => h.text).join("\n\n");
+          focused = true;
+        }
+      }
+      if (!body) body = rawText.slice(0, READ_CHAR_CAP).trim();
       if (!body) throw new Error("筆記是空的，沒東西可唸");
       lines = splitChunks(body).map((t) => ({ speaker: "A" as const, text: t }));
     }
@@ -120,8 +134,8 @@ async function runPodcast(id: string, rawText: string, options: Partial<GenOptio
       where: { id },
       data: {
         status: "done",
-        result: JSON.stringify({ mode, voicePair: pair, lines, chars }),
-        options: JSON.stringify({ ...options, podcastMode: mode, voicePair: pair, lineCount: lines.length, chars }),
+        result: JSON.stringify({ mode, voicePair: pair, lines, chars, focused }),
+        options: JSON.stringify({ ...options, podcastMode: mode, voicePair: pair, lineCount: lines.length, chars, focused }),
       },
     });
   } catch (e) {
@@ -146,7 +160,7 @@ async function runGeneration(id: string) {
     } catch {
       /* ignore */
     }
-    await runPodcast(id, gen.note.rawText, options);
+    await runPodcast(id, { title: gen.note.title, rawText: gen.note.rawText }, options);
     return;
   }
   try {

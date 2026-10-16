@@ -4,7 +4,7 @@ import { useState } from "react";
 import { safeName } from "@/lib/export";
 import type { PodLine } from "@/server/podcast";
 
-type PodResult = { mode: "read" | "dialogue"; voicePair: string; lines: PodLine[]; chars: number };
+type PodResult = { mode: "read" | "dialogue"; voicePair: string; lines: PodLine[]; chars: number; focused?: boolean };
 
 /** 播客結果：Edge 高品質音檔 + 逐字稿；Edge 掛掉時可用瀏覽器內建語音降級試聽。 */
 export function PodcastView({ result, title, genId }: { result: string; title: string; genId: string }) {
@@ -45,6 +45,9 @@ export function PodcastView({ result, title, genId }: { result: string; title: s
           <span className="rounded border border-line px-1.5 py-0.5 font-semibold">
             {parsed.mode === "dialogue" ? "雙人對談" : "原文朗讀"}
           </span>
+          {parsed.focused && (
+            <span className="rounded border border-accent px-1.5 py-0.5 font-semibold text-ink">只讀相關段落</span>
+          )}
           <span>約 {mins} 分鐘 · {parsed.chars} 字</span>
         </div>
         {genId ? (
