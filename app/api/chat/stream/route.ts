@@ -39,13 +39,12 @@ export async function POST(req: Request) {
     }
   } else if (body.noteId) {
     const note = await db.note.findUnique({ where: { id: body.noteId } });
-    if (note) {
-      const paras = headParagraphs(note.rawText);
-      messages.push({
-        role: "system",
-        content: `你是學習助教，只能根據以下編號段落回答，不要用段落外的知識。引用依據時在句末標段落編號，形如「……[p2]」。用繁體中文回答。\n\n${paras.map((p) => `[${p.id}] ${p.text}`).join("\n")}`,
-      });
-    }
+    if (!note) return Response.json({ error: "找不到這份筆記（可能已被刪除），請重選參照筆記" }, { status: 404 });
+    const paras = headParagraphs(note.rawText);
+    messages.push({
+      role: "system",
+      content: `你是學習助教，只能根據以下編號段落回答，不要用段落外的知識。引用依據時在句末標段落編號，形如「……[p2]」。用繁體中文回答。\n\n${paras.map((p) => `[${p.id}] ${p.text}`).join("\n")}`,
+    });
   } else {
     messages.push({ role: "system", content: "你是學習助教，用繁體中文回答。" });
   }
@@ -66,6 +65,8 @@ export async function POST(req: Request) {
         stream: true,
         stream_options: { include_usage: true },
       }),
+      // 串流回答可能很長，寬限到 3 分鐘；卡死至少會變成錯誤而不是無限轉圈
+      signal: AbortSignal.timeout(180000),
     });
   } catch {
     return Response.json({ error: "連不上模型端點" }, { status: 502 });
@@ -77,19 +78,31 @@ export async function POST(req: Request) {
 
   const model = key.model;
   const initialSources = sourceList;
+  let upstreamReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+  // 前端按停止（abort）時把上游也掐掉，不然 server 端繼續燒 token 燒完為止
+  req.signal.addEventListener("abort", () => {
+    try {
+      upstreamReader?.cancel();
+    } catch {
+      /* ignore */
+    }
+  });
   const stream = new ReadableStream({
     async start(controller) {
       const enc = new TextEncoder();
       const send = (obj: unknown) => controller.enqueue(enc.encode(`data: ${JSON.stringify(obj)}\n\n`));
       if (initialSources.length > 0) send({ sources: initialSources });
-      const reader = upstream.body!.getReader();
+      upstreamReader = upstream.body!.getReader();
+      const reader = upstreamReader;
       const dec = new TextDecoder();
       let buf = "";
+      let usageLogged = false;
       try {
         for (;;) {
           const { done, value } = await reader.read();
           if (done) break;
-          buf += dec.decode(value, { stream: true });
+          // F-3：部分供應商發 \r\n，直接 split("\n\n") 會永遠切不開、畫面卡死
+          buf += dec.decode(value, { stream: true }).replace(/\r\n/g, "\n");
           const parts = buf.split("\n\n");
           buf = parts.pop() ?? "";
           for (const part of parts) {
@@ -105,7 +118,9 @@ export async function POST(req: Request) {
                 };
                 const delta = json.choices?.[0]?.delta?.content;
                 if (delta) send({ delta });
-                if (json.usage) {
+                // 有些供應商每個 chunk 都帶 usage，只記第一次，免得用量翻倍
+                if (json.usage && !usageLogged) {
+                  usageLogged = true;
                   await logUsage("chat", model, {
                     promptTokens: json.usage.prompt_tokens ?? 0,
                     completionTokens: json.usage.completion_tokens ?? 0,

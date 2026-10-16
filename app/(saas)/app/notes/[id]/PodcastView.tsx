@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { safeName } from "@/lib/export";
 import type { PodLine } from "@/server/podcast";
 
@@ -9,6 +9,8 @@ type PodResult = { mode: "read" | "dialogue"; voicePair: string; lines: PodLine[
 /** 播客結果：Edge 高品質音檔 + 逐字稿；Edge 掛掉時可用瀏覽器內建語音降級試聽。 */
 export function PodcastView({ result, title, genId }: { result: string; title: string; genId: string }) {
   const [speaking, setSpeaking] = useState(false);
+  // S-3：跳頁後瀏覽器還在背後唸，卸載時掐掉
+  useEffect(() => () => window.speechSynthesis?.cancel(), []);
   let parsed: PodResult | null = null;
   try {
     parsed = JSON.parse(result) as PodResult;

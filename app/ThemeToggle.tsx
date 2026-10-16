@@ -26,6 +26,14 @@ export function ThemeToggle() {
       /* ignore */
     }
   }, []);
+  // system 模式下跟著 OS 即時翻（手機日落自動轉深色不用重整）
+  useEffect(() => {
+    if (theme !== "system") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const fn = () => applyTheme("system");
+    mq.addEventListener("change", fn);
+    return () => mq.removeEventListener("change", fn);
+  }, [theme]);
   function cycle() {
     const next = ORDER[(ORDER.indexOf(theme) + 1) % ORDER.length] ?? "system";
     setTheme(next);

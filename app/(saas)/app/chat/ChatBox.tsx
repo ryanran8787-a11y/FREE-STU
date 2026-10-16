@@ -5,7 +5,9 @@ import { ArrowUp } from "lucide-react";
 import { BagIcon } from "@/app/icons";
 import { AiMessage } from "./AiMessage";
 
-type Msg = { role: "user" | "ai"; text: string };
+type Msg = { role: "user" | "ai"; text: string; sources?: Map<string, { title: string; text: string }> };
+
+const EMPTY_SOURCES = new Map<string, { title: string; text: string }>();
 
 const SUGGESTIONS = ["幫我列出這段的 3 個重點", "用白話解釋一次", "考我一題"];
 
@@ -24,7 +26,6 @@ export function ChatBox({
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [ctrl, setCtrl] = useState<AbortController | null>(null);
-  const [sources, setSources] = useState<Map<string, { title: string; text: string }>>(new Map());
 
   async function send(text?: string) {
     const message = (text ?? input).trim();
@@ -63,10 +64,14 @@ export function ChatBox({
               const evt = JSON.parse(t.slice(5).trim()) as { delta?: string; error?: string; sources?: { ref: string; noteTitle: string; text: string }[] };
               if (evt.error) throw new Error(evt.error);
               if (evt.sources) {
-                const list = evt.sources;
-                setSources((prev) => {
-                  const next = new Map(prev);
-                  for (const s of list) next.set(s.ref, { title: s.noteTitle, text: s.text });
+                // F-6：sources 跟著本則回答走——以前全站共用一個 map，第二問的 s1 會蓋掉第一問的
+                const m = new Map<string, { title: string; text: string }>();
+                for (const s of evt.sources) m.set(s.ref, { title: s.noteTitle, text: s.text });
+                const snap = m;
+                setMsgs((prev) => {
+                  const next = [...prev];
+                  const last = next[next.length - 1];
+                  if (last && last.role === "ai") next[next.length - 1] = { ...last, sources: snap };
                   return next;
                 });
               }
@@ -133,7 +138,7 @@ export function ChatBox({
             </div>
           ) : (
             <div key={i} className="rise flex justify-start">
-              <AiMessage text={m.text} paras={paras} sources={sources} />
+              <AiMessage text={m.text} paras={paras} sources={m.sources ?? EMPTY_SOURCES} />
             </div>
           ),
         )}
@@ -152,7 +157,8 @@ export function ChatBox({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
+            // F-7：中文輸入法選字中的 Enter 是確認候選字，不是送出
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
               send();
             }

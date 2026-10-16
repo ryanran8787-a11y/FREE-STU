@@ -1,5 +1,5 @@
-// Prisma schema for HSHSA — 免費 AI 學習站 MVP.
-// M1: UserKey（BYOK）+ Note + Generation（M2 用，先建表）。
+// Prisma schema for FREE-STU — 免費 AI 學習站（自架單人版，BYOK）。
+// 表：UserKey（主 key＋視覺 key）/ Note / Generation（result 存 JSON、options 存設定快照）/ Usage（token 記賬）。
 
 generator client {
   provider = "prisma-client"

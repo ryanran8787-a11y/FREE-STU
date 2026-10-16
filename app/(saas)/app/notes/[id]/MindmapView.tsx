@@ -105,6 +105,11 @@ export function MindmapView({
   function doRename() {
     if (!selected) return;
     const name = newName.trim();
+    // S-2：撞現有標題會製造同名節點（sourceMap 塌陷），直接擋掉
+    if (name !== selected && titlesRef.current.includes(name)) {
+      setSaveMsg("已有同名節點，換個名字");
+      return;
+    }
     const next = renameNodeInMd(result, selected, name);
     if (!next) {
       setSaveMsg("改名失敗（名稱為空）");

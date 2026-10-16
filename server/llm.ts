@@ -16,6 +16,7 @@ export async function chatCompletion(opts: {
   messages: { role: string; content: string }[];
   temperature?: number;
 }): Promise<{ text: string; usage: { promptTokens: number; completionTokens: number } }> {
+  // F-2：無 timeout 的 fetch 卡死會讓生成任務永遠 running（CAS 只認 pending，重試也救不回）
   const res = await fetch(`${opts.baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -27,6 +28,7 @@ export async function chatCompletion(opts: {
       messages: opts.messages,
       temperature: opts.temperature ?? 0.3,
     }),
+    signal: AbortSignal.timeout(120000),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");

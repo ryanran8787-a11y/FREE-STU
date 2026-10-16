@@ -135,12 +135,16 @@ function DeleteNoteButton({ id }: { id: string }) {
   const remove = trpc.note.remove.useMutation();
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
 
   async function doDelete() {
     setBusy(true);
+    setErr("");
     try {
       await remove.mutateAsync({ id });
       router.push("/app/notes");
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "刪除失敗");
     } finally {
       setBusy(false);
     }
@@ -162,6 +166,7 @@ function DeleteNoteButton({ id }: { id: string }) {
       <button onClick={() => setConfirm(false)} className="rounded border border-line px-2 py-0.5 text-muted hover:border-muted">
         取消
       </button>
+      {err && <span className="text-red-500">{err}</span>}
     </span>
   );
 }
@@ -422,7 +427,7 @@ export function NoteDetail({ id }: { id: string }) {
                 </select>
               </div>
               <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-muted">自訂題數</span>
+                <span className="text-xs font-semibold text-muted">自訂題數（只對閃卡/測驗有效）</span>
                 <input value={custom} onChange={(e) => setCustom(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="空=公式" className="field text-xs" />
               </div>
             </div>

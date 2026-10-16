@@ -13,7 +13,7 @@ export function downloadText(filename: string, text: string, mime = "text/markdo
 }
 
 export function safeName(s: string): string {
-  return (s || "未命名").replace(/[\\/:*?"<>|]/g, "_").slice(0, 60) || "未命名";
+  return (s || "未命名").replace(/[\\/:*?"<>|]/g, "_").replace(/[\x00-\x1f]/g, "_").slice(0, 60) || "未命名";
 }
 
 export function flashcardsToMd(title: string, cards: { front: string; back: string }[]): string {

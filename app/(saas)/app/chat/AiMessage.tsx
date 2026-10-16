@@ -74,9 +74,12 @@ export function AiMessage({ text, paras, sources }: { text: string; paras: Map<s
   }
 
   function lookup(id: string): { label: string; body: string } | null {
-    const s = sources.get(id);
-    if (s) return { label: `[${id}]《${s.title}》`, body: s.text };
-    const t = paras.get(id.replace(/^[ps]/, ""));
+    // F-5：s 只查跨筆記 sources、p 只查本筆記 paras，不交叉——以前 [s3] 查不到會拿 p3 冒充
+    if (id.startsWith("s")) {
+      const s = sources.get(id);
+      return s ? { label: `[${id}]《${s.title}》`, body: s.text } : null;
+    }
+    const t = paras.get(id.replace(/^p/, ""));
     if (t !== undefined) return { label: `[${id}]`, body: t };
     return null;
   }

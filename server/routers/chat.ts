@@ -17,13 +17,12 @@ export const chatRouter = router({
       const messages: { role: string; content: string }[] = [];
       if (input.noteId) {
         const note = await db.note.findUnique({ where: { id: input.noteId } });
-        if (note) {
-          const paras = headParagraphs(note.rawText);
-          messages.push({
-            role: "system",
-            content: `你是學習助教，只能根據以下編號段落回答，不要用段落外的知識。引用依據時在句末標段落編號，形如「……[p2]」。用繁體中文回答。\n\n${paras.map((p) => `[${p.id}] ${p.text}`).join("\n")}`,
-          });
-        }
+        if (!note) throw new Error("找不到這份筆記（可能已被刪除），請重選參照筆記");
+        const paras = headParagraphs(note.rawText);
+        messages.push({
+          role: "system",
+          content: `你是學習助教，只能根據以下編號段落回答，不要用段落外的知識。引用依據時在句末標段落編號，形如「……[p2]」。用繁體中文回答。\n\n${paras.map((p) => `[${p.id}] ${p.text}`).join("\n")}`,
+        });
       } else {
         messages.push({ role: "system", content: "你是學習助教，用繁體中文回答。" });
       }

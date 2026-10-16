@@ -53,6 +53,9 @@ export const userRouter = router({
       const apiKey = input.apiKey.trim();
       const existing = await db.userKey.findUnique({ where: { id: "default" } });
       if (!existing) throw new Error("先設定主 Key，才能加視覺模型");
+      if (apiKey && (!input.baseUrl.trim() || !input.model.trim())) {
+        throw new Error("填了視覺 Key，Base URL 和 Model 也要填（或把 Key 清空退回本地鏈）");
+      }
       await db.userKey.update({
         where: { id: "default" },
         data: apiKey

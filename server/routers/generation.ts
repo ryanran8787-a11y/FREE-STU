@@ -64,6 +64,40 @@ function buildDialoguePrompt(lang: string, focus: string): string {
   return `你是播客編劇。根據以下筆記寫一段${lang}雙人對談逐字稿：A 是主持人（提問、串場、幫聽眾總結），B 是講解者（用人話講清楚概念，可以舉例）。10 到 16 輪，兩人輪流發言，每句 150 字以內，總長 2000 字以內，口語、不要書面腔，不要開場白以外的廢話。只回傳 JSON 陣列，每個元素 {speaker（只能是 "A" 或 "B"）, text}，不要其他文字：${f}\n\n`;
 }
 
+/** 閃卡/測驗回傳驗證：爛掉的單題丟掉不存（F-1：以前 answer 越界會存進「永遠答不對的題」） */
+export function sanitizeItems(
+  type: "flashcards" | "quiz",
+  items: unknown[],
+): { front: string; back: string }[] | { question: string; options: string[]; answer: number; explanation?: string }[] {
+  if (type === "flashcards") {
+    const out: { front: string; back: string }[] = [];
+    for (const it of items) {
+      const r = it as { front?: unknown; back?: unknown };
+      if (typeof r.front !== "string" || !r.front.trim()) continue;
+      out.push({ front: r.front.trim(), back: typeof r.back === "string" ? r.back : "" });
+    }
+    return out;
+  }
+  const out: { question: string; options: string[]; answer: number; explanation?: string }[] = [];
+  for (const it of items) {
+    const r = it as { question?: unknown; options?: unknown; answer?: unknown; explanation?: unknown };
+    if (typeof r.question !== "string" || !r.question.trim()) continue;
+    const opts = (Array.isArray(r.options) ? r.options : [])
+      .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
+      .map((o) => o.trim())
+      .slice(0, 4);
+    if (opts.length < 2) continue;
+    const answer = typeof r.answer === "number" ? Math.min(opts.length - 1, Math.max(0, Math.floor(r.answer))) : 0;
+    out.push({
+      question: r.question.trim(),
+      options: opts,
+      answer,
+      ...(typeof r.explanation === "string" && r.explanation.trim() ? { explanation: r.explanation.trim() } : {}),
+    });
+  }
+  return out;
+}
+
 /** 對話稿驗證：只留下合法的輪次，總長封頂 */
 export function parseDialogue(text: string): PodLine[] {
   let raw: { speaker?: unknown; text?: unknown }[];
@@ -218,9 +252,11 @@ async function runGeneration(id: string) {
       return;
     }
     const items = parseJsonArray(text);
+    const clean = sanitizeItems(gen.type as "flashcards" | "quiz", items);
+    if (clean.length === 0) throw new Error("模型回傳格式不符（已過濾無效題目，剩 0 題），再按一次生成");
     await db.generation.update({
       where: { id },
-      data: { status: "done", result: JSON.stringify(items) },
+      data: { status: "done", result: JSON.stringify(clean) },
     });
   } catch (e) {
     await db.generation.update({
@@ -253,7 +289,7 @@ export const generationRouter = router({
           noteId: input.noteId,
           type: input.type,
           status: "pending",
-          options: JSON.stringify({ count: input.count, difficulty: input.difficulty, language: input.language, focus: input.focus, podcastMode: input.podcastMode, voicePair: input.voicePair }),
+          options: JSON.stringify({ count: input.count, difficulty: input.difficulty, language: input.language, focus: input.focus, customCount: input.customCount, podcastMode: input.podcastMode, voicePair: input.voicePair }),
         },
       });
       return { id: gen.id };

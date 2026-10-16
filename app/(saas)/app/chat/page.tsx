@@ -9,11 +9,13 @@ export default function ChatPage() {
   const [noteId, setNoteId] = useState("");
   const keyStatus = trpc.user.getKeyStatus.useQuery();
   const notes = trpc.note.list.useQuery();
-  const activeNote = trpc.note.get.useQuery({ id: noteId }, { enabled: !!noteId });
+  // 組 paras 只需要 rawText，用 getMany（不含 generations）比 note.get 輕
+  const activeNotes = trpc.note.getMany.useQuery({ ids: noteId && noteId !== "*" ? [noteId] : [] }, { enabled: !!noteId && noteId !== "*" });
   const paras = useMemo(() => {
-    if (!activeNote.data) return new Map<string, string>();
-    return new Map(splitParagraphs(activeNote.data.rawText).map((p) => [p.id.replace(/^p/, ""), p.text]));
-  }, [activeNote.data]);
+    const raw = activeNotes.data?.[0]?.rawText;
+    if (!raw) return new Map<string, string>();
+    return new Map(splitParagraphs(raw).map((p) => [p.id.replace(/^p/, ""), p.text]));
+  }, [activeNotes.data]);
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">

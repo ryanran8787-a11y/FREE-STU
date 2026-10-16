@@ -4,7 +4,7 @@
 import os from "os";
 import path from "path";
 import { pathToFileURL } from "url";
-import { Canvas, DOMMatrix, ImageData, Path2D, createCanvas } from "@napi-rs/canvas";
+import { DOMMatrix, ImageData, Path2D, createCanvas } from "@napi-rs/canvas";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 import { createWorker, type Worker } from "tesseract.js";
 
@@ -23,37 +23,60 @@ export async function getVisionKey(): Promise<VisionKey> {
   return { baseUrl: row.visionBaseUrl, apiKey: row.visionApiKey, model: row.visionModel };
 }
 
-async function loadPdf(buf: Buffer) {
-  return pdfjsLib
-    .getDocument({
-      data: new Uint8Array(buf),
-      useWorkerFetch: false,
-      useSystemFonts: true,
-      standardFontDataUrl: pathToFileURL(path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts/") + path.sep).href,
-    })
-    .promise;
+type PdfDoc = {
+  numPages: number;
+  getPage(n: number): Promise<{
+    getViewport(o: { scale: number }): { width: number; height: number };
+    render(o: object): { promise: Promise<void> };
+    getTextContent(): Promise<{ items: unknown[] }>;
+  }>;
+};
+
+async function loadPdf(buf: Buffer): Promise<{ doc: PdfDoc; destroy: () => Promise<void> }> {
+  // legacy entry 的 .d.mts 沒宣告 destroy（實際有，見 PDFLoadingTask），cast 處理
+  const task = pdfjsLib.getDocument({
+    data: new Uint8Array(buf),
+    useWorkerFetch: false,
+    useSystemFonts: true,
+    standardFontDataUrl: pathToFileURL(path.join(process.cwd(), "node_modules/pdfjs-dist/standard_fonts/") + path.sep).href,
+  }) as unknown as { promise: Promise<PdfDoc>; destroy: () => Promise<void> };
+  const doc = await task.promise;
+  return { doc, destroy: () => task.destroy().catch(() => undefined) };
 }
 
 export async function pdfPageText(buf: Buffer, pageNum: number): Promise<string> {
-  const doc = await loadPdf(buf);
-  if (pageNum > doc.numPages) return "";
-  const page = await doc.getPage(pageNum);
-  const content = await page.getTextContent();
-  return content.items.map((it) => ("str" in it ? (it.str as string) : "")).join(" ");
+  const { doc, destroy } = await loadPdf(buf);
+  try {
+    if (pageNum > doc.numPages) return "";
+    const page = await doc.getPage(pageNum);
+    const content = await page.getTextContent();
+    return content.items.map((it) => ("str" in (it as object) ? String((it as { str: unknown }).str) : "")).join(" ");
+  } finally {
+    // F-4：不 destroy 的話每頁漏一個 doc，掃描 PDF 幾十頁就把記憶體撐爆
+    await destroy();
+  }
 }
 
 export async function pdfPageCount(buf: Buffer): Promise<number> {
-  const doc = await loadPdf(buf);
-  return doc.numPages;
+  const { doc, destroy } = await loadPdf(buf);
+  try {
+    return doc.numPages;
+  } finally {
+    await destroy();
+  }
 }
 
 export async function renderPdfPageToPng(buf: Buffer, pageNum: number, scale = 2): Promise<Buffer> {
-  const doc = await loadPdf(buf);
-  const page = await doc.getPage(pageNum);
-  const viewport = page.getViewport({ scale });
-  const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
-  await page.render({ canvas: canvas as unknown as HTMLCanvasElement, viewport }).promise;
-  return Buffer.from(await canvas.encode("png"));
+  const { doc, destroy } = await loadPdf(buf);
+  try {
+    const page = await doc.getPage(pageNum);
+    const viewport = page.getViewport({ scale });
+    const canvas = createCanvas(Math.ceil(viewport.width), Math.ceil(viewport.height));
+    await page.render({ canvas: canvas as unknown as HTMLCanvasElement, viewport }).promise;
+    return Buffer.from(await canvas.encode("png"));
+  } finally {
+    await destroy();
+  }
 }
 
 let workerPromise: Promise<Worker> | null = null;
@@ -102,6 +125,7 @@ export async function ocrVision(png: Buffer, key: Exclude<VisionKey, null>): Pro
         },
       ],
     }),
+    signal: AbortSignal.timeout(120000),
   });
   if (!res.ok) {
     const t = await res.text().catch(() => "");
@@ -123,6 +147,3 @@ export async function ocrPage(
   }
   return { text: await ocrLocal(png), engine: "local" };
 }
-
-// 避免 Canvas 未使用警告（型別引用）
-void Canvas;

@@ -38,8 +38,15 @@ export function splitChunks(text: string, max = 450): string[] {
     }
   }
   if (cur) out.push(cur);
-  // 單句超長的硬切（罕見，保底）
-  return out.flatMap((c) => (c.length > max * 2 ? c.match(new RegExp(`.{1,${max}}`, "g")) ?? [c] : [c]));
+  // 單句超長的硬切（罕見，保底）：按 code point 切，不把 emoji 攔腰斬斷
+  return out.flatMap((c) => (c.length > max * 2 ? hardCut(c, max) : [c]));
+}
+
+function hardCut(s: string, max: number): string[] {
+  const chars = [...s];
+  const out: string[] = [];
+  for (let i = 0; i < chars.length; i += max) out.push(chars.slice(i, i + max).join(""));
+  return out.length > 0 ? out : [s];
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
@@ -70,7 +77,7 @@ export async function synthesize(text: string, voice: string): Promise<Buffer> {
     } catch (e) {
       if (attempt === 1) {
         throw new Error(
-          `語音合成失敗（Edge 免費接口不穩，稍後重試，或改用頁面上的瀏覽器試聽）：${e instanceof Error ? e.message.slice(0, 120) : "未知錯誤"}`,
+          `語音合成失敗（Edge 免費接口不穩，稍後重試，或改用頁面上的瀏覽器試聽；若一直失敗，檢查電腦系統時間是否差太多）：${e instanceof Error ? e.message.slice(0, 120) : "未知錯誤"}`,
         );
       }
     }
