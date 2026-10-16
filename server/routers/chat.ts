@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { headParagraphs } from "@/lib/paras";
 import { chatCompletion, getKeyOrThrow, logUsage } from "@/server/llm";
+import { globalStyle, withStyle } from "@/server/style";
 import { publicProcedure, router } from "@/server/trpc";
 
 export const chatRouter = router({
@@ -27,6 +28,11 @@ export const chatRouter = router({
         messages.push({ role: "system", content: "你是學習助教，用繁體中文回答。" });
       }
       messages.push({ role: "user", content: input.message });
+      // 全域風格拼在 system 尾（對話無格式契約，不加防呆）
+      const style = await globalStyle();
+      if (style && messages[0]?.role === "system") {
+        messages[0].content = withStyle(messages[0].content, style, false);
+      }
       const { text, usage } = await chatCompletion({
         baseUrl: key.baseUrl,
         apiKey: key.apiKey,

@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { headParagraphs } from "@/lib/paras";
 import { searchNotes } from "@/lib/retrieval";
 import { getKeyOrThrow, logUsage } from "@/server/llm";
+import { globalStyle, withStyle } from "@/server/style";
 
 type ChatMsg = { role: string; content: string };
 
@@ -49,6 +50,10 @@ export async function POST(req: Request) {
     messages.push({ role: "system", content: "你是學習助教，用繁體中文回答。" });
   }
   messages.push({ role: "user", content: message });
+  const style = await globalStyle();
+  if (style && messages[0]?.role === "system") {
+    messages[0].content = withStyle(messages[0].content, style, false);
+  }
 
   let upstream: Response;
   try {

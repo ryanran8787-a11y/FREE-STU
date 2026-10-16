@@ -129,8 +129,10 @@ export default function SettingsPage() {
   const status = trpc.user.getKeyStatus.useQuery();
   const usage = trpc.usage.stats.useQuery();
   const vision = trpc.user.getVision.useQuery();
+  const system = trpc.user.getSystem.useQuery();
   const setKey = trpc.user.setKey.useMutation();
   const setVision = trpc.user.setVision.useMutation();
+  const setSystem = trpc.user.setSystem.useMutation();
   const [provider, setProvider] = useState("openai");
   const [baseUrl, setBaseUrl] = useState(DEFAULT_PRESET.baseUrl);
   const [model, setModel] = useState(DEFAULT_PRESET.model);
@@ -141,6 +143,8 @@ export default function SettingsPage() {
   const [vModel, setVModel] = useState("gemini-2.5-flash");
   const [vApiKey, setVApiKey] = useState("");
   const [vMsg, setVMsg] = useState("");
+  const [sysPrompt, setSysPrompt] = useState("");
+  const [sysMsg, setSysMsg] = useState("");
 
   useEffect(() => {
     if (status.data?.hasKey) {
@@ -157,6 +161,10 @@ export default function SettingsPage() {
       setVModel(vision.data.model);
     }
   }, [vision.data]);
+
+  useEffect(() => {
+    if (system.data) setSysPrompt(system.data.prompt);
+  }, [system.data]);
 
   async function save() {
     setMsg("");
@@ -330,6 +338,52 @@ export default function SettingsPage() {
           {setVision.isPending ? "儲存中…" : "儲存視覺模型"}
         </button>
         {vMsg && <p className="text-sm">{vMsg}</p>}
+      </div>
+
+      <div className="card flex flex-col gap-3 p-4 md:p-5">
+        <h2 className="font-extrabold">全域系統提示詞（選填，影響所有筆記）</h2>
+        <p className="text-sm text-muted">
+          幫全站 AI 定一個人格口吻，之後所有新對話、新生成都吃這個；舊的已生成不受影響。自訂模板 / 原文是你自己的地盤，不吃這個。
+          狀態：{system.isLoading ? "讀取中…" : system.data?.prompt ? "已設定" : "未設定（預設助教口吻）"}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { label: "貓娘助教", body: "你是一隻博學的貓娘助教。講解正確嚴謹，但語氣慵懶可愛，句尾偶爾加個「喵」，不會多到干擾閱讀。" },
+            { label: "考試教官", body: "你是嚴厲的考試教官。只講考點，不講廢話，答錯觀念直接糾正，語氣簡短有力。" },
+            { label: "白話大師", body: "你是白話大師。再難的概念都要講到國中生聽懂，多用生活例子，禁用術語堆砌。" },
+          ].map((p) => (
+            <button key={p.label} onClick={() => setSysPrompt(p.body)} className="rounded border border-line px-3 py-1 text-sm hover:border-muted">
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-semibold">系統提示詞（留空儲存 = 清除，回到預設）</span>
+          <textarea
+            value={sysPrompt}
+            onChange={(e) => setSysPrompt(e.target.value)}
+            rows={4}
+            placeholder="例如：萬物貓娘化——不管講什麼，最後都要用貓來舉例。"
+            className="field resize-y"
+          />
+        </label>
+        <button
+          onClick={async () => {
+            setSysMsg("");
+            try {
+              const r = await setSystem.mutateAsync({ prompt: sysPrompt });
+              setSysMsg(r.configured ? "已設定，全站新對話/生成生效。" : "已清除，回到預設助教口吻。");
+              system.refetch();
+            } catch (e) {
+              setSysMsg(`儲存失敗：${e instanceof Error ? e.message : "未知錯誤"}`);
+            }
+          }}
+          disabled={setSystem.isPending}
+          className="btn-primary"
+        >
+          {setSystem.isPending ? "儲存中…" : "儲存系統提示詞"}
+        </button>
+        {sysMsg && <p className="text-sm">{sysMsg}</p>}
       </div>
 
       <PhoneConnect />

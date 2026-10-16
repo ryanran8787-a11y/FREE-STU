@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { extractSourceMap, headParagraphs } from "@/lib/paras";
 import { flashcardCount, quizCount, type CountLevel } from "@/lib/counts";
 import { chatCompletion, getKeyOrThrow, logUsage, parseJsonArray } from "@/server/llm";
+import { globalStyle, withStyle } from "@/server/style";
 import { searchNotes } from "@/lib/retrieval";
 import {
   BUILTIN_TEMPLATES,
@@ -155,7 +156,7 @@ async function runCustom(id: string, note: { title: string; rawText: string }, o
           ? options.customMethod
           : "explain";
       const length: SimpleLength = options.customLength === "short" || options.customLength === "long" ? options.customLength : "standard";
-      prompt = buildSimplePrompt(method, length, options.customHintFirst === true, langName, focus) + note.rawText.slice(0, 12000);
+      prompt = withStyle(buildSimplePrompt(method, length, options.customHintFirst === true, langName, focus) + note.rawText.slice(0, 12000), await globalStyle(), false);
     } else {
       let body: string;
       if (kind === "template") {
@@ -222,7 +223,7 @@ async function runPodcast(id: string, note: { title: string; rawText: string }, 
         baseUrl: key.baseUrl,
         apiKey: key.apiKey,
         model: key.model,
-        messages: [{ role: "user", content: buildDialoguePrompt(langName, focus) + rawText.slice(0, 12000) }],
+        messages: [{ role: "user", content: withStyle(buildDialoguePrompt(langName, focus) + rawText.slice(0, 12000), await globalStyle(), true) }],
         temperature: 0.7,
       });
       await logUsage("podcast", key.model, usage);
@@ -317,7 +318,7 @@ async function runGeneration(id: string) {
       baseUrl: key.baseUrl,
       apiKey: key.apiKey,
       model: key.model,
-      messages: [{ role: "user", content: buildPrompt(gen.type as "flashcards" | "quiz" | "mindmap", o, n) + context }],
+      messages: [{ role: "user", content: withStyle(buildPrompt(gen.type as "flashcards" | "quiz" | "mindmap", o, n) + context, await globalStyle(), true) }],
       temperature: 0.5,
     });
     await logUsage(gen.type, key.model, usage);

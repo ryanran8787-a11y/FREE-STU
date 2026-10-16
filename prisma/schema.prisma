@@ -21,6 +21,7 @@ model UserKey {
   visionBaseUrl  String?
   visionModel    String?
   visionApiKey   String?
+  systemPrompt String   @default("")
   updatedAt DateTime @updatedAt
 }
 

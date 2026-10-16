@@ -80,4 +80,19 @@ export const userRouter = router({
       model: row.visionModel ?? "",
     };
   }),
+
+  /** 全域系統提示詞：影響所有新生成與對話（自訂模板/原文除外），不追溯舊的 */
+  getSystem: publicProcedure.query(async () => {
+    const row = await db.userKey.findUnique({ where: { id: "default" } });
+    return { prompt: row?.systemPrompt ?? "" };
+  }),
+
+  setSystem: publicProcedure
+    .input(z.object({ prompt: z.string().max(2000).default("") }))
+    .mutation(async ({ input }) => {
+      const existing = await db.userKey.findUnique({ where: { id: "default" } });
+      if (!existing) throw new Error("先設定主 Key，才能加全域風格");
+      await db.userKey.update({ where: { id: "default" }, data: { systemPrompt: input.prompt.trim() } });
+      return { ok: true, configured: input.prompt.trim().length > 0 };
+    }),
 });
