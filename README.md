@@ -1,5 +1,7 @@
 # NEXT（FREE-STU）— 免費開源 AI 學習站
 
+![MIT](https://img.shields.io/badge/license-MIT-green)
+
 貼上筆記就能問、能測驗、能抽閃卡、能聽播客。對標 ThetaWave、Astra AI、NotebookLM 的自架單人版：**站方零成本，你零月費**——模型用你自己的 Key（BYOK），資料只存你的電腦。
 
 ## 功能
@@ -56,3 +58,7 @@ lib/{counts,paras,retrieval,mindmap,export}.ts  前後端共用純函數
 - 播客音檔在 `data/podcasts/`（gitignore），刪筆記會連帶清掉
 - 發版若改了靜態殼，記得 bump `public/sw.js` 的 `CACHE` 名，否則手機吃舊殼
 - Edge TTS 是非官方接口，微軟改版會掛（2026-10-10 搬過一次家，見 `server/edgeTts.ts`）；掛了就用頁面上的瀏覽器試聽
+
+## 授權
+
+MIT，完全開放——自己用、改完發、拿去賣都行，保留 LICENSE 署名即可。
