@@ -1,4 +1,5 @@
 import {
+  AudioLines,
   Backpack,
   BookOpen,
   KeyRound,
@@ -24,3 +25,4 @@ export const BookIcon = wrap(BookOpen);
 export const SparkIcon = wrap(Sparkles);
 export const BagIcon = wrap(Backpack);
 export const UploadIcon = wrap(Upload);
+export const PodIcon = wrap(AudioLines);

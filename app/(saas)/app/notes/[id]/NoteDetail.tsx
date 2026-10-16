@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CardIcon, QuizIcon, SparkIcon } from "@/app/icons";
+import { CardIcon, PodIcon, QuizIcon, SparkIcon } from "@/app/icons";
 import { flashcardCount, quizCount } from "@/lib/counts";
 import { downloadText, flashcardsToMd, quizToMd, safeName } from "@/lib/export";
 import { splitParagraphs } from "@/lib/paras";
 import { trpc } from "@/lib/trpc";
 import { ChatBox } from "@/app/(saas)/app/chat/ChatBox";
 import { MindmapView } from "./MindmapView";
+import { PodcastView } from "./PodcastView";
 
 type Gen = { id: string; type: string; status: string; result: string | null; error: string | null };
 
@@ -115,6 +116,7 @@ function Quiz({ result, title }: { result: string; title: string }) {
 
 function GenView({ result, type, sources, paras, title, genId, masteredInit, onSaved, onGenerate }: { result: string; type: string; sources: Record<string, string[]>; paras: { id: string; text: string }[]; title: string; genId: string; masteredInit: string[]; onSaved: () => void; onGenerate?: (type: "flashcards" | "quiz", focus: string) => void }) {
   if (type === "mindmap") return <MindmapView result={result} sources={sources} paras={paras} onGenerate={onGenerate} title={title} genId={genId} masteredInit={masteredInit} onSaved={onSaved} />;
+  if (type === "podcast") return <PodcastView result={result} title={title} genId={genId} />;
   try {
     const arr = JSON.parse(result) as Record<string, unknown>[];
     if (arr.length > 0 && "options" in arr[0]) return <Quiz result={result} title={title} />;
@@ -124,7 +126,7 @@ function GenView({ result, type, sources, paras, title, genId, masteredInit, onS
   }
 }
 
-const TYPE_LABEL: Record<string, string> = { flashcards: "閃卡", quiz: "測驗", mindmap: "心智圖" };
+const TYPE_LABEL: Record<string, string> = { flashcards: "閃卡", quiz: "測驗", mindmap: "心智圖", podcast: "播客" };
 
 type DoneGen = { id: string; type: string; result: string | null; options: string; createdAt: Date };
 
@@ -249,6 +251,8 @@ export function NoteDetail({ id }: { id: string }) {
   const [lang, setLang] = useState<"zh-Hant" | "zh-Hans" | "en">("zh-Hant");
   const [focus, setFocus] = useState("");
   const [custom, setCustom] = useState("");
+  const [podMode, setPodMode] = useState<"read" | "dialogue">("read");
+  const [podPair, setPodPair] = useState<"cn" | "tw">("cn");
   const poll = trpc.generation.getStatus.useQuery(
     { id: pollId ?? "" },
     { enabled: !!pollId, refetchInterval: (q) => (q.state.data?.status === "done" || q.state.data?.status === "error" ? false : 2000) },
@@ -264,7 +268,7 @@ export function NoteDetail({ id }: { id: string }) {
     }
   }, [poll.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function gen(type: "flashcards" | "quiz" | "mindmap", focusOverride?: string) {
+  async function gen(type: "flashcards" | "quiz" | "mindmap" | "podcast", focusOverride?: string, pod?: { mode: "read" | "dialogue"; pair: "cn" | "tw" }) {
     const n = parseInt(custom, 10);
     const res = await start.mutateAsync({
       noteId: id,
@@ -274,6 +278,7 @@ export function NoteDetail({ id }: { id: string }) {
       language: lang,
       focus: focusOverride ?? focus,
       ...(Number.isFinite(n) && n >= 1 ? { customCount: Math.min(50, n) } : {}),
+      ...(type === "podcast" ? { podcastMode: pod?.mode ?? "read", voicePair: pod?.pair ?? "cn" } : {}),
     });
     setLiveType(type);
     setPollId(res.id);
@@ -340,7 +345,7 @@ export function NoteDetail({ id }: { id: string }) {
           {busy && (
             <div className="card flex items-center gap-3 p-4 text-sm font-medium">
               <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-ink" />
-              AI 出題中…（{live?.status}，好了自動出現）
+              {live?.type === "podcast" ? "播客製作中…（逐段合成，約1-3分鐘，好了自動出現）" : "AI 出題中…（好了自動出現）"}
             </div>
           )}
           {live?.status === "error" && (
@@ -365,7 +370,7 @@ export function NoteDetail({ id }: { id: string }) {
           {!busy && !(live?.status === "done" && live.result) && selected && (
             <div>
               <h2 className="mb-2 flex items-center gap-1.5 font-bold">
-                {selected.type === "flashcards" ? <CardIcon size={16} /> : selected.type === "mindmap" ? <SparkIcon size={16} /> : <QuizIcon size={16} />}
+                {selected.type === "flashcards" ? <CardIcon size={16} /> : selected.type === "mindmap" ? <SparkIcon size={16} /> : selected.type === "podcast" ? <PodIcon size={16} /> : <QuizIcon size={16} />}
                 {TYPE_LABEL[selected.type] ?? selected.type}
               </h2>
               <GenView
@@ -436,6 +441,14 @@ export function NoteDetail({ id }: { id: string }) {
                 <SparkIcon size={16} /> 生成心智圖（{count === "less" ? "精簡" : count === "more" ? "詳盡" : "標準"}）
               </button>
             </div>
+            <div className="flex flex-col gap-1.5 border-t border-line pt-3">
+              <span className="text-xs font-semibold text-muted">播客</span>
+              <Seg value={podMode} onChange={setPodMode} options={[{ v: "read", label: "朗讀（免費）" }, { v: "dialogue", label: "對談（花token）" }]} />
+              <Seg value={podPair} onChange={setPodPair} options={[{ v: "cn", label: "大陸腔" }, { v: "tw", label: "台灣腔" }]} />
+              <button onClick={() => gen("podcast", undefined, { mode: podMode, pair: podPair })} disabled={start.isPending || !!busy} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
+                <PodIcon size={16} /> 生成播客
+              </button>
+            </div>
           </div>
 
           {doneGens.length > 0 && (
@@ -450,7 +463,7 @@ export function NoteDetail({ id }: { id: string }) {
                       onClick={() => setSelectedId(g.id)}
                       className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors hover:bg-paper ${active ? "bg-paper font-semibold" : ""}`}
                     >
-                      <span className="text-muted">{g.type === "flashcards" ? <CardIcon size={14} /> : g.type === "mindmap" ? <SparkIcon size={14} /> : <QuizIcon size={14} />}</span>
+                      <span className="text-muted">{g.type === "flashcards" ? <CardIcon size={14} /> : g.type === "mindmap" ? <SparkIcon size={14} /> : g.type === "podcast" ? <PodIcon size={14} /> : <QuizIcon size={14} />}</span>
                       <span>{TYPE_LABEL[g.type] ?? g.type}</span>
                       <span className="ml-auto text-muted">{new Date(g.createdAt).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric" })}</span>
                     </button>

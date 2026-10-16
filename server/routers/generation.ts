@@ -1,14 +1,26 @@
 import { z } from "zod";
+import fs from "fs/promises";
+import path from "path";
 import { db } from "@/lib/db";
 import { extractSourceMap, headParagraphs } from "@/lib/paras";
 import { flashcardCount, quizCount, type CountLevel } from "@/lib/counts";
 import { chatCompletion, getKeyOrThrow, logUsage, parseJsonArray } from "@/server/llm";
+import {
+  DIALOGUE_CHAR_CAP,
+  READ_CHAR_CAP,
+  splitChunks,
+  synthesizeLines,
+  type PodLine,
+  type VoicePairId,
+} from "@/server/podcast";
 import { publicProcedure, router } from "@/server/trpc";
 
-const generationType = z.enum(["flashcards", "quiz", "mindmap"]);
+const generationType = z.enum(["flashcards", "quiz", "mindmap", "podcast"]);
 const countLevel = z.enum(["less", "standard", "more"]);
 const difficulty = z.enum(["easy", "medium", "hard"]);
 const language = z.enum(["zh-Hant", "zh-Hans", "en"]);
+const podcastMode = z.enum(["read", "dialogue"]);
+const voicePair = z.enum(["cn", "tw"]);
 
 const DIFF_WORDS: Record<string, string> = {
   easy: "簡單（基礎記憶、定義）",
@@ -28,6 +40,8 @@ export type GenOptions = {
   language: z.infer<typeof language>;
   focus: string;
   customCount?: number;
+  podcastMode?: z.infer<typeof podcastMode>;
+  voicePair?: z.infer<typeof voicePair>;
 };
 
 function buildPrompt(type: z.infer<typeof generationType>, o: GenOptions, n: number | null): string {
@@ -44,12 +58,97 @@ function buildPrompt(type: z.infer<typeof generationType>, o: GenOptions, n: num
   return `你是學習助教。根據以下筆記產生 ${count} 題${lang}單選測驗，難度${DIFF_WORDS[o.difficulty]}，只回傳 JSON 陣列，每個元素 {question, options(4個字串，不要加A/B/C/D編號), answer(正確選項的索引0-3), explanation(為什麼正確、一兩句話${lang})}，不要其他文字：${focus}\n\n`;
 }
 
+function buildDialoguePrompt(lang: string, focus: string): string {
+  const f = focus.trim() ? `\n主題聚焦：${focus.trim().slice(0, 500)}（優先圍繞這個主題聊）` : "";
+  return `你是播客編劇。根據以下筆記寫一段${lang}雙人對談逐字稿：A 是主持人（提問、串場、幫聽眾總結），B 是講解者（用人話講清楚概念，可以舉例）。10 到 16 輪，兩人輪流發言，每句 150 字以內，總長 2000 字以內，口語、不要書面腔，不要開場白以外的廢話。只回傳 JSON 陣列，每個元素 {speaker（只能是 "A" 或 "B"）, text}，不要其他文字：${f}\n\n`;
+}
+
+/** 對話稿驗證：只留下合法的輪次，總長封頂 */
+export function parseDialogue(text: string): PodLine[] {
+  let raw: { speaker?: unknown; text?: unknown }[];
+  try {
+    raw = parseJsonArray(text) as { speaker?: unknown; text?: unknown }[];
+  } catch {
+    return []; // 模型沒照格式回，上層轉成人話錯誤
+  }
+  const lines: PodLine[] = [];
+  let total = 0;
+  for (const r of raw) {
+    if (lines.length >= 40) break;
+    const speaker = r.speaker === "B" ? "B" : r.speaker === "A" ? "A" : null;
+    const t = typeof r.text === "string" ? r.text.trim() : "";
+    if (!speaker || !t) continue;
+    const cut = t.slice(0, 600);
+    if (total + cut.length > DIALOGUE_CHAR_CAP) break;
+    total += cut.length;
+    lines.push({ speaker, text: cut });
+  }
+  return lines;
+}
+
+async function runPodcast(id: string, rawText: string, options: Partial<GenOptions>) {
+  try {
+    const mode = options.podcastMode === "dialogue" ? "dialogue" : "read";
+    const pair: VoicePairId = options.voicePair === "tw" ? "tw" : "cn";
+    const lang = options.language === "zh-Hans" || options.language === "en" ? options.language : "zh-Hant";
+    const focus = typeof options.focus === "string" ? options.focus : "";
+    let lines: PodLine[];
+    if (mode === "dialogue") {
+      const key = await getKeyOrThrow();
+      const langName = lang === "zh-Hans" ? "简体中文" : lang === "en" ? "English" : "繁體中文";
+      const { text, usage } = await chatCompletion({
+        baseUrl: key.baseUrl,
+        apiKey: key.apiKey,
+        model: key.model,
+        messages: [{ role: "user", content: buildDialoguePrompt(langName, focus) + rawText.slice(0, 12000) }],
+        temperature: 0.7,
+      });
+      await logUsage("podcast", key.model, usage);
+      lines = parseDialogue(text);
+      if (lines.length === 0) throw new Error("對話稿產生失敗（模型沒照格式回，再試一次）");
+    } else {
+      const body = rawText.slice(0, READ_CHAR_CAP).trim();
+      if (!body) throw new Error("筆記是空的，沒東西可唸");
+      lines = splitChunks(body).map((t) => ({ speaker: "A" as const, text: t }));
+    }
+    const audio = await synthesizeLines(lines, pair);
+    const dir = path.join(process.cwd(), "data", "podcasts");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, `${id}.mp3`), audio);
+    const chars = lines.reduce((a, l) => a + l.text.length, 0);
+    await db.generation.update({
+      where: { id },
+      data: {
+        status: "done",
+        result: JSON.stringify({ mode, voicePair: pair, lines, chars }),
+        options: JSON.stringify({ ...options, podcastMode: mode, voicePair: pair, lineCount: lines.length, chars }),
+      },
+    });
+  } catch (e) {
+    await db.generation.update({
+      where: { id },
+      data: { status: "error", error: e instanceof Error ? e.message.slice(0, 500) : "未知錯誤" },
+    });
+  }
+}
+
 async function runGeneration(id: string) {
   const gen = await db.generation.findUnique({
     where: { id },
     include: { note: true },
   });
   if (!gen || gen.status !== "running") return;
+  // 播客走獨立分支（寫稿→TTS→存檔）
+  if (gen.type === "podcast") {
+    let options: Partial<GenOptions> = {};
+    try {
+      options = JSON.parse(gen.options || "{}") as Partial<GenOptions>;
+    } catch {
+      /* ignore */
+    }
+    await runPodcast(id, gen.note.rawText, options);
+    return;
+  }
   try {
     const options = JSON.parse(gen.options || "{}") as Partial<GenOptions>;
     const o: GenOptions = {
@@ -128,6 +227,8 @@ export const generationRouter = router({
         language: language.default("zh-Hant"),
         focus: z.string().max(500).default(""),
         customCount: z.number().int().min(1).max(50).optional(),
+        podcastMode: podcastMode.default("read"),
+        voicePair: voicePair.default("cn"),
       }),
     )
     .mutation(async ({ input }) => {
@@ -138,7 +239,7 @@ export const generationRouter = router({
           noteId: input.noteId,
           type: input.type,
           status: "pending",
-          options: JSON.stringify({ count: input.count, difficulty: input.difficulty, language: input.language, focus: input.focus }),
+          options: JSON.stringify({ count: input.count, difficulty: input.difficulty, language: input.language, focus: input.focus, podcastMode: input.podcastMode, voicePair: input.voicePair }),
         },
       });
       return { id: gen.id };

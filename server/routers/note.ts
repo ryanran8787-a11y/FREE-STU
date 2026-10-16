@@ -1,4 +1,6 @@
 import { z } from "zod";
+import fs from "fs/promises";
+import path from "path";
 import { db } from "@/lib/db";
 import { publicProcedure, router } from "@/server/trpc";
 
@@ -44,7 +46,12 @@ export const noteRouter = router({
     }),
 
   remove: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
+    const gens = await db.generation.findMany({ where: { noteId: input.id }, select: { id: true } });
     await db.note.delete({ where: { id: input.id } });
+    // 連帶清播客音檔（SQLite cascade 只刪 row，磁碟檔自己清）
+    for (const g of gens) {
+      await fs.unlink(path.join(process.cwd(), "data", "podcasts", `${g.id}.mp3`)).catch(() => undefined);
+    }
     return { ok: true };
   }),
 });

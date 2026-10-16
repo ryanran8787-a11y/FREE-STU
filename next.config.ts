@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
-  serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas", "tesseract.js", "mammoth"],
+  serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas", "tesseract.js", "mammoth", "ws"],
   turbopack: {
     rules: {
       "*.css": {
