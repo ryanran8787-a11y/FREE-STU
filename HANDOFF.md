@@ -14,9 +14,9 @@
 ## 已落地功能
 對話（BYOK 10 家 preset、筆記選擇器、段落引用 `[pN]` chip、跨筆記 RAG `[sN]`、Markdown 渲染、SSE 串流+停止鈕）／筆記（貼文、上傳 txt/md/docx/pdf、刪除、追加來源、多選合併）／生成（閃卡翻卡、測驗+解析+ABCD、數量公式按字數+自訂、難度/語言/主題聚焦、心智圖 markmap+來源映射+點擊溯源+改名刪除+已理解+自測+節點出題）／用量記賬／匯出（MD/SVG/PNG 降級）／OCR 雙軌（本地 tesseract chi_tra+eng／視覺 key）／設定頁（主 key + 視覺 key）／三欄工作台＋全幅
 
-## 剛做完（HEAD `14b7b5f`）
-八輪審查全修：F-1 測驗驗證（sanitizeItems）/ F-2 三處 fetch timeout / F-3 SSE 換行正規化 / F-4 pdfjs 改走 loadingTask.destroy（doc 沒這方法，entry 型別是對的）/ F-5 引用分流 / F-6 逐訊息 sources / F-7 IME 誤送 / **F-8 自訂題數 start 沒存進 options（整個功能斷線，活體驗出）** + 13 小修。
-深色+PWA+手機連線卡（見上）。
+## 剛做完（HEAD `292fbfc`）
+自訂 Prompt 三層制：第一層簡易（方式/長度/先提示，免懂 Prompt）/ 第二層範本（內建蘇格拉底/費曼/考前衝刺＋我的模板 CRUD）/ 第三層編輯器（六變數＋預覽＋存多版＋不存直接生成）。新表 CustomTemplate，type=custom 走同一管線，結果自由 Markdown＋匯出。
+八輪審查全修（見上）。
 播客 TTS（`11a9dbe`）：`podcast` generation type，朗讀（免費，支援聚焦挑段）/對談（花主 Key token）雙模式，預設大陸腔，自帶 Edge 客戶端 `server/edgeTts.ts`。
 **大坑**：2026-10-10 起微軟搬遷端點，舊 speech.platform.bing.com 握手 403 → 改打 `wss://api.msedgeservices.com/.../websocket/v1` + v2 Sec-MS-GEC（演算法 port 自 readest），舊 URL 留作降級。Turbopack 吃不下 `.ts` 主入口的 npm 包（edge-tts 已卸載）。
 音檔 `data/podcasts/<genId>.mp3`（gitignore），`/api/podcast/[id]` 播+Range+下載，刪筆記連帶清檔。
