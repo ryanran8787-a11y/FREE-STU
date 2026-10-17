@@ -167,6 +167,31 @@ body {
   animation: rise 0.3s ease both;
 }
 
+/* 卡片 hover：微浮起 */
+.card {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+button:not(:disabled):hover .card,
+a:hover .card {
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.06);
+}
+
+/* 按鈕按壓回饋 */
+button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+/* 主題切換平滑過渡 */
+html {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+html .card,
+html .btn-primary,
+html .btn-ghost,
+html .field {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
 /* 閃卡 3D 翻面 */
 .flip-scene {
   perspective: 1200px;

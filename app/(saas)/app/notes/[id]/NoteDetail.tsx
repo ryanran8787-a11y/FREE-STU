@@ -503,12 +503,21 @@ export function NoteDetail({ id }: { id: string }) {
       {/* 生成中提示 */}
       {busy && (
         <div className="card flex items-center gap-3 p-4 text-sm font-medium">
-          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-line border-t-ink" />
-          {liveType === "podcast" ? "播客製作中…（逐段合成，約1-3分鐘）" : liveType === "custom" ? "自訂生成中…" : "AI 出題中…"}（好了自動切到對應 tab）
+          <span className="relative flex h-4 w-4">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+            <span className="relative inline-flex h-4 w-4 rounded-full border-2 border-line border-t-ink" />
+          </span>
+          {liveType === "podcast" ? "播客製作中" : liveType === "custom" ? "自訂生成中" : "AI 出題中"}
+          <span className="flex gap-0.5">
+            <span className="h-1 w-1 animate-bounce rounded-full bg-muted" style={{ animationDelay: "0ms" }} />
+            <span className="h-1 w-1 animate-bounce rounded-full bg-muted" style={{ animationDelay: "150ms" }} />
+            <span className="h-1 w-1 animate-bounce rounded-full bg-muted" style={{ animationDelay: "300ms" }} />
+          </span>
+          <span className="text-xs text-muted">好了自動切到對應 tab</span>
         </div>
       )}
       {poll.data?.status === "error" && (
-        <div className="card border-l-4 !border-l-red-400 p-4 text-sm">失敗：{poll.data.error}</div>
+        <div className="card border-l-4 !border-l-red-400 p-4 text-sm rise">失敗：{poll.data.error}</div>
       )}
 
       {/* 主內容區：左來源（可折疊）+ 中 tab 內容 + 右 Studio（可折疊） */}
@@ -523,12 +532,14 @@ export function NoteDetail({ id }: { id: string }) {
             {sourcesOpen ? "◀ 來源" : "▶"}
           </button>
           {sourcesOpen && (
-            <SourcesPanel noteId={id} title={note.data.title} rawText={note.data.rawText} onChanged={() => note.refetch()} />
+            <div className="rise">
+              <SourcesPanel noteId={id} title={note.data.title} rawText={note.data.rawText} onChanged={() => note.refetch()} />
+            </div>
           )}
         </div>
 
         {/* 中：Tab 內容 */}
-        <div className="order-1 min-w-0 lg:order-2">
+        <div key={tab} className="order-1 min-w-0 lg:order-2 rise">
           {tab === "note" && (
             <div className="flex flex-col gap-4">
               <div className="card p-5">
@@ -616,7 +627,7 @@ export function NoteDetail({ id }: { id: string }) {
             {studioOpen ? "▶ Studio" : "◀"}
           </button>
           {studioOpen && (
-            <div className="card flex flex-col gap-3 p-4">
+            <div className="card rise flex flex-col gap-3 p-4">
               <h2 className="text-sm font-bold">Studio</h2>
               <div className="flex flex-col gap-1.5">
                 <span className="text-xs font-semibold text-muted">數量</span>
