@@ -9,6 +9,7 @@ import { downloadText, flashcardsToMd, quizToMd, safeName } from "@/lib/export";
 import { splitParagraphs } from "@/lib/paras";
 import { trpc } from "@/lib/trpc";
 import { ChatBox } from "@/app/(saas)/app/chat/ChatBox";
+import { FloatingChat } from "./FloatingChat";
 import { MindmapView } from "./MindmapView";
 import { PodcastView } from "./PodcastView";
 import { CustomView } from "./CustomView";
@@ -600,10 +601,8 @@ export function NoteDetail({ id }: { id: string }) {
           )}
 
           {/* 問這份筆記（永遠顯示在最下） */}
-          <div className="card p-4">
-            <h2 className="mb-2 text-sm font-bold">問這份筆記</h2>
-            <ChatBox noteId={id} paras={parasMap} showSuggestions={false} compact />
-          </div>
+          {/* 浮動聊天（取代原本嵌入的 ChatBox） */}
+          <FloatingChat noteId={id} paras={parasMap} />
         </div>
 
         {/* 右：Studio（可折疊） */}
