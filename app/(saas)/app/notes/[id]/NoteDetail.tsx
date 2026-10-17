@@ -76,15 +76,38 @@ function Quiz({ result, title, genId }: { result: string; title: string; genId: 
   const qs = JSON.parse(result) as { question: string; options: string[]; answer: number; explanation?: string }[];
   const [picked, setPicked] = useState<Record<number, number>>({});
   const [conf, setConf] = useState<Record<number, "high" | "med" | "low">>({});
+  const [explain, setExplain] = useState<Record<number, string>>({});
+  const [explainLoading, setExplainLoading] = useState<Set<number>>(new Set());
   const utils = trpc.useUtils();
   const log = trpc.attempt.log.useMutation({ onSuccess: () => utils.attempt.stats.invalidate() });
+  const explainMut = trpc.generation.explain.useMutation({
+    onSuccess: (data, vars) => {
+      setExplain((prev) => ({ ...prev, [vars.qIndex]: data.text }));
+      setExplainLoading((s) => {
+        const n = new Set(s);
+        n.delete(vars.qIndex);
+        return n;
+      });
+    },
+    onError: (e, vars) => {
+      setExplain((prev) => ({ ...prev, [vars.qIndex]: `解釋失敗：${e.message}` }));
+      setExplainLoading((s) => {
+        const n = new Set(s);
+        n.delete(vars.qIndex);
+        return n;
+      });
+    },
+  });
   const done = Object.keys(picked).length === qs.length;
   const score = qs.filter((q, qi) => picked[qi] === q.answer).length;
   function pick(qi: number, oi: number, correct: boolean) {
-    if (genId) {
-      log.mutate({ genId, qIndex: qi, picked: oi, correct, confidence: conf[qi] ?? "med" });
-    }
+    if (genId) log.mutate({ genId, qIndex: qi, picked: oi, correct, confidence: conf[qi] ?? "med" });
     setPicked((p) => (p[qi] !== undefined ? p : { ...p, [qi]: oi }));
+  }
+  function askExplain(qi: number) {
+    if (!genId || explain[qi] || explainLoading.has(qi)) return;
+    setExplainLoading((s) => new Set(s).add(qi));
+    explainMut.mutate({ id: genId, qIndex: qi });
   }
   return (
     <div className="flex flex-col gap-3">
@@ -141,6 +164,22 @@ function Quiz({ result, title, genId }: { result: string; title: string; genId: 
           {picked[qi] !== undefined && q.explanation && (
             <div className="mt-2 rounded-md bg-paper px-3 py-2 text-xs leading-relaxed text-muted">
               <span className="font-bold text-ink">解析：</span>{q.explanation}
+            </div>
+          )}
+          {picked[qi] !== undefined && picked[qi] !== q.answer && (
+            <div className="mt-2">
+              <button
+                onClick={() => askExplain(qi)}
+                disabled={explainLoading.has(qi)}
+                className="rounded border border-accent bg-accent-soft px-2 py-1 text-xs font-semibold text-ink disabled:opacity-50"
+              >
+                {explainLoading.has(qi) ? "解釋中…" : explain[qi] ? "重新解釋" : "要解釋（三角度）"}
+              </button>
+              {explain[qi] && (
+                <div className="mt-2 whitespace-pre-wrap rounded-md border border-accent bg-accent-soft px-3 py-2 text-xs leading-relaxed">
+                  {explain[qi]}
+                </div>
+              )}
             </div>
           )}
         </div>
