@@ -61,3 +61,18 @@ model CustomTemplate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
+
+/** 作答紀錄：信心標記（high/med/low）× 對錯 → 盲點分析＋複習佇列的地基 */
+model Attempt {
+  id         String   @id @default(cuid())
+  genId      String
+  noteId     String
+  kind       String   @default("quiz")
+  qIndex     Int
+  picked     Int?
+  correct    Boolean
+  confidence String   @default("med")
+  createdAt  DateTime @default(now())
+
+  @@index([noteId, createdAt])
+}

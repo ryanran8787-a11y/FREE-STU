@@ -13,15 +13,23 @@ import { MindmapView } from "./MindmapView";
 import { PodcastView } from "./PodcastView";
 import { CustomView } from "./CustomView";
 import { CustomSection } from "./CustomSection";
+import { BlindSpots } from "./BlindSpots";
 
 type Gen = { id: string; type: string; status: string; result: string | null; error: string | null };
 
-function Flashcards({ result, title }: { result: string; title: string }) {
+function Flashcards({ result, title, genId }: { result: string; title: string; genId: string }) {
   const cards = JSON.parse(result) as { front: string; back: string }[];
   const [i, setI] = useState(0);
   const [flip, setFlip] = useState(false);
+  const utils = trpc.useUtils();
+  const log = trpc.attempt.log.useMutation({ onSuccess: () => utils.attempt.stats.invalidate() });
   if (cards.length === 0) return <p className="text-sm text-muted">空的。</p>;
   const c = cards[Math.min(i, cards.length - 1)];
+  function grade(correct: boolean, confidence: "high" | "med" | "low") {
+    if (genId) log.mutate({ genId, qIndex: Math.min(i, cards.length - 1), correct, confidence });
+    setI((v) => Math.min(v + 1, cards.length - 1));
+    setFlip(false);
+  }
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center">
@@ -48,6 +56,14 @@ function Flashcards({ result, title }: { result: string; title: string }) {
         </div>
         <button disabled={i >= cards.length - 1} onClick={() => { setI(i + 1); setFlip(false); }} className="btn-ghost !px-4 !py-1.5 text-sm">下張 →</button>
       </div>
+      {flip && (
+        <div className="flex items-center justify-center gap-2 text-xs">
+          <span className="text-muted">自評：</span>
+          <button onClick={() => grade(true, "high")} className="rounded border border-line px-3 py-1.5 font-semibold hover:border-muted">記得</button>
+          <button onClick={() => grade(true, "med")} className="rounded border border-line px-3 py-1.5 hover:border-muted">模糊</button>
+          <button onClick={() => grade(false, "low")} className="rounded border border-line px-3 py-1.5 hover:border-red-400 hover:text-red-600">忘了</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -56,11 +72,20 @@ function stripLabel(op: string): string {
   return op.replace(/^[A-D][、．.。:：\s]*/, "");
 }
 
-function Quiz({ result, title }: { result: string; title: string }) {
+function Quiz({ result, title, genId }: { result: string; title: string; genId: string }) {
   const qs = JSON.parse(result) as { question: string; options: string[]; answer: number; explanation?: string }[];
   const [picked, setPicked] = useState<Record<number, number>>({});
+  const [conf, setConf] = useState<Record<number, "high" | "med" | "low">>({});
+  const utils = trpc.useUtils();
+  const log = trpc.attempt.log.useMutation({ onSuccess: () => utils.attempt.stats.invalidate() });
   const done = Object.keys(picked).length === qs.length;
   const score = qs.filter((q, qi) => picked[qi] === q.answer).length;
+  function pick(qi: number, oi: number, correct: boolean) {
+    if (genId) {
+      log.mutate({ genId, qIndex: qi, picked: oi, correct, confidence: conf[qi] ?? "med" });
+    }
+    setPicked((p) => (p[qi] !== undefined ? p : { ...p, [qi]: oi }));
+  }
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center">
@@ -76,6 +101,19 @@ function Quiz({ result, title }: { result: string; title: string }) {
       {qs.map((q, qi) => (
         <div key={qi} className="card p-4">
           <div className="text-sm font-bold">{qi + 1}. {q.question}</div>
+          <div className="mt-2 flex items-center gap-1 text-[11px]">
+            <span className="text-muted">信心：</span>
+            {([["high", "有把握"], ["med", "不確定"], ["low", "瞎猜"]] as const).map(([v, label]) => (
+              <button
+                key={v}
+                disabled={picked[qi] !== undefined}
+                onClick={() => setConf((c) => ({ ...c, [qi]: v }))}
+                className={`rounded border px-1.5 py-0.5 ${((conf[qi] ?? "med") === v) ? "invert-chip border-ink font-semibold" : "border-line text-muted hover:border-muted"} disabled:opacity-60`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="mt-2 flex flex-col gap-1.5">
             {q.options.map((raw, oi) => {
               const op = stripLabel(raw);
@@ -85,7 +123,7 @@ function Quiz({ result, title }: { result: string; title: string }) {
               return (
                 <button
                   key={oi}
-                  onClick={() => setPicked((p) => (p[qi] !== undefined ? p : { ...p, [qi]: oi }))}
+                  onClick={() => pick(qi, oi, oi === q.answer)}
                   className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
                     show && correct
                       ? "border-accent bg-accent-soft font-semibold"
@@ -122,8 +160,8 @@ function GenView({ result, type, sources, paras, title, genId, masteredInit, onS
   if (type === "custom") return <CustomView result={result} title={title} paras={paras} />;
   try {
     const arr = JSON.parse(result) as Record<string, unknown>[];
-    if (arr.length > 0 && "options" in arr[0]) return <Quiz result={result} title={title} />;
-    return <Flashcards result={result} title={title} />;
+    if (arr.length > 0 && "options" in arr[0]) return <Quiz result={result} title={title} genId={genId} />;
+    return <Flashcards result={result} title={title} genId={genId} />;
   } catch {
     return <p className="whitespace-pre-wrap text-sm text-red-500">解析失敗，原文：{result.slice(0, 500)}</p>;
   }
@@ -401,6 +439,7 @@ export function NoteDetail({ id }: { id: string }) {
               <p className="text-sm">還沒生成任何東西，右邊開一發吧。</p>
             </div>
           )}
+          {!busy && <BlindSpots noteId={id} onRegen={(f) => gen("quiz", f)} />}
 
           <div className="card p-4">
             <h2 className="mb-2 text-sm font-bold">問這份筆記</h2>
