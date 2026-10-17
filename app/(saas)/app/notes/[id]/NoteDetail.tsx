@@ -602,7 +602,7 @@ export function NoteDetail({ id }: { id: string }) {
 
           {/* 問這份筆記（永遠顯示在最下） */}
           {/* 浮動聊天（取代原本嵌入的 ChatBox） */}
-          <FloatingChat noteId={id} paras={parasMap} />
+          <FloatingChat noteId={id} paras={parasMap} noteTitle={noteTitle} />
         </div>
 
         {/* 右：Studio（可折疊） */}
