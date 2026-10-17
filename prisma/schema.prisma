@@ -76,3 +76,17 @@ model Attempt {
 
   @@index([noteId, createdAt])
 }
+
+/** 雙向來源追蹤：每個段落 pN 被哪些產出引用（flashcard/quiz/mindmap/podcast/chat） */
+model UsageLink {
+  id      String @id @default(cuid())
+  noteId  String
+  paraId  String
+  genId   String?
+  kind    String
+  ref     String?
+  createdAt DateTime @default(now())
+
+  @@index([noteId, paraId])
+  @@index([genId])
+}

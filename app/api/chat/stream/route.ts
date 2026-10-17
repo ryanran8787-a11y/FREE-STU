@@ -25,11 +25,13 @@ export async function POST(req: Request) {
 
   const messages: ChatMsg[] = [];
   let sourceList: { ref: string; noteId: string; noteTitle: string; text: string }[] = [];
+  const usedParaIds: string[] = [];
   if (body.noteId === "*") {
     // 跨筆記檢索：全部筆記切段召回，引用編號 s1..sK
     const notes = await db.note.findMany({ select: { id: true, title: true, rawText: true } });
     const hits = searchNotes(notes, message, 6);
     sourceList = hits.map((h, i) => ({ ref: `s${i + 1}`, noteId: h.noteId, noteTitle: h.noteTitle, text: h.text }));
+    usedParaIds.push(...hits.map((h) => h.paraId));
     if (sourceList.length === 0) {
       messages.push({ role: "system", content: "你是學習助教，用繁體中文回答。使用者沒有提供相關筆記，請直接回答並說明這是通用知識、非出自他的筆記。" });
     } else {
@@ -46,10 +48,14 @@ export async function POST(req: Request) {
       role: "system",
       content: `你是學習助教，只能根據以下編號段落回答，不要用段落外的知識。引用依據時在句末標段落編號，形如「……[p2]」。用繁體中文回答。\n\n${paras.map((p) => `[${p.id}] ${p.text}`).join("\n")}`,
     });
+    usedParaIds.push(...paras.map((p) => p.id));
   } else {
     messages.push({ role: "system", content: "你是學習助教，用繁體中文回答。" });
   }
   messages.push({ role: "user", content: message });
+  // 雙向追蹤：把這輪提供的段落 ID 記下來，前端 done 後呼叫 link.logChat 寫入
+  // （不寫在這裡，避免 SSE 期間每個 chunk 寫 DB）
+  void usedParaIds;
   const style = await globalStyle();
   if (style && messages[0]?.role === "system") {
     messages[0].content = withStyle(messages[0].content, style, false);

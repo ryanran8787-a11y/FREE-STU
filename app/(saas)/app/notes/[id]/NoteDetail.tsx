@@ -260,6 +260,7 @@ function SourcesPanel({ noteId, title, rawText, onChanged }: { noteId: string; t
   const [srcText, setSrcText] = useState("");
   const [msg, setMsg] = useState("");
   const appendSource = trpc.note.appendSource.useMutation();
+  const links = trpc.link.byPara.useQuery({ noteId, paraId: openId ?? "" }, { enabled: !!openId });
 
   async function doAppend() {
     if (!srcText.trim() || appendSource.isPending) return;
@@ -315,6 +316,16 @@ function SourcesPanel({ noteId, title, rawText, onChanged }: { noteId: string; t
                 <span className="mt-0.5 shrink-0 font-mono font-bold text-muted">[{p.id}]</span>
                 <span className="leading-relaxed">{open ? p.text : p.text.length > 60 ? p.text.slice(0, 60) + "…" : p.text}</span>
               </button>
+                {open && (links.data?.length ?? 0) > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5 px-2">
+                    <span className="text-[10px] font-semibold text-muted">被引用：</span>
+                    {links.data!.map((l) => (
+                      <span key={l.id} className="rounded bg-paper px-1.5 py-0.5 text-[10px] font-mono text-muted">
+                        {l.kind === "chat" ? "對話" : l.kind === "mindmap" ? "心智圖" : l.kind === "podcast" ? "播客" : l.kind === "custom" ? "自訂" : l.kind}
+                      </span>
+                    ))}
+                  </div>
+                )}
             </div>
           );
         })}

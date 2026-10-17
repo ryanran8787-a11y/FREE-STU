@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowUp } from "lucide-react";
 import { BagIcon } from "@/app/icons";
 import { AiMessage } from "./AiMessage";
@@ -26,6 +26,7 @@ export function ChatBox({
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [streaming, setStreaming] = useState(false);
   const [ctrl, setCtrl] = useState<AbortController | null>(null);
+  const [usedParaIds, setUsedParaIds] = useState<string[]>([]);
 
   async function send(text?: string) {
     const message = (text ?? input).trim();
@@ -64,6 +65,7 @@ export function ChatBox({
               const evt = JSON.parse(t.slice(5).trim()) as { delta?: string; error?: string; sources?: { ref: string; noteTitle: string; text: string }[] };
               if (evt.error) throw new Error(evt.error);
               if (evt.sources) {
+                setUsedParaIds((prev) => [...new Set([...prev, ...evt.sources!.map((s) => "p" + s.ref.slice(1))])]);
                 // F-6：sources 跟著本則回答走——以前全站共用一個 map，第二問的 s1 會蓋掉第一問的
                 const m = new Map<string, { title: string; text: string }>();
                 for (const s of evt.sources) m.set(s.ref, { title: s.noteTitle, text: s.text });
@@ -108,6 +110,9 @@ export function ChatBox({
         return next;
       });
     } finally {
+      if (noteId && noteId !== "*" && usedParaIds.length > 0) {
+        fetch('/api/trpc/link.logChat?batch=1', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ '0': { json: { noteId, paraIds: usedParaIds } } }) }).catch(() => {});
+      }
       setStreaming(false);
       setCtrl(null);
     }

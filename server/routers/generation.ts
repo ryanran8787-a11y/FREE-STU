@@ -6,6 +6,7 @@ import { extractSourceMap, headParagraphs } from "@/lib/paras";
 import { flashcardCount, quizCount, type CountLevel } from "@/lib/counts";
 import { chatCompletion, getKeyOrThrow, logUsage, parseJsonArray } from "@/server/llm";
 import { globalStyle, withStyle } from "@/server/style";
+import { splitParagraphs } from "@/lib/paras";
 import { searchNotes } from "@/lib/retrieval";
 import {
   BUILTIN_TEMPLATES,
@@ -209,6 +210,7 @@ async function runCustom(id: string, note: { title: string; rawText: string }, o
       temperature: 0.5,
     });
     await logUsage("custom", key.model, usage);
+    // 雙向追蹤：custom 沒有段落對應，跳過（非關鍵）
     await db.generation.update({
       where: { id },
       data: {
@@ -267,6 +269,12 @@ async function runPodcast(id: string, note: { title: string; rawText: string }, 
     const dir = path.join(process.cwd(), "data", "podcasts");
     await fs.mkdir(dir, { recursive: true });
     await fs.writeFile(path.join(dir, `${id}.mp3`), audio);
+    // 雙向追蹤：每段用 TF 對應原文段落
+    const plinks = lines.map((l) => {
+      const hits = searchNotes([{ id, title: note.title, rawText }], l.text, 1, 500);
+      return { noteId: id, paraId: hits[0]?.paraId ?? "p0", genId: id, kind: "podcast" };
+    });
+    if (plinks.length > 0) await db.usageLink.createMany({ data: plinks });
     const chars = lines.reduce((a, l) => a + l.text.length, 0);
     await db.generation.update({
       where: { id },
@@ -347,6 +355,16 @@ async function runGeneration(id: string) {
         new Set(paras.map((p) => p.id)),
       );
       const conflicts = parseConflicts(text);
+      // 雙向追蹤：sourceMap 已有 node->para，直接寫 link
+      if (sourceMap) {
+        const links = Object.values(sourceMap).flat().map((paraId) => ({
+          noteId: gen.noteId,
+          paraId,
+          genId: id,
+          kind: "mindmap",
+        }));
+        if (links.length > 0) await db.usageLink.createMany({ data: links });
+      }
       await db.generation.update({
         where: { id },
         data: {
@@ -359,8 +377,25 @@ async function runGeneration(id: string) {
     }
     const items = parseJsonArray(text);
     const clean = sanitizeItems(gen.type as "flashcards" | "quiz", items);
-    if (clean.length === 0) throw new Error("模型回傳格式不符（已過濾無效題目，剩 0 題），再按一次生成");
+      const genNote = gen.note;
+      const genNoteId = gen.noteId;
+      if (clean.length === 0) throw new Error("模型回傳格式不符（已過濾無效題目，剩 0 題），再按一次生成");
     const conflicts = parseConflicts(text);
+    // 雙向追蹤：閃卡/測驗沒有 sourceMap，用 TF 把每題對應到最相關的段落
+    {
+      const paras = splitParagraphs(genNote.rawText);
+      const noteId = genNoteId;
+      const links: { noteId: string; paraId: string; genId: string; kind: string }[] = [];
+      for (let qi = 0; qi < clean.length; qi++) {
+        const item = clean[qi] as { front?: string; question?: string };
+        const qtext = item.front || item.question || "";
+        if (!qtext) continue;
+        const hits = searchNotes([{ id: gen.noteId, title: gen.note.title, rawText: gen.note.rawText }], qtext, 1, 2000);
+        const paraId = hits[0]?.paraId ?? paras[0]?.id ?? "p0";
+        links.push({ noteId: gen.noteId, paraId, genId: id, kind: gen.type });
+      }
+      if (links.length > 0) await db.usageLink.createMany({ data: links });
+    }
     await db.generation.update({
       where: { id },
       data: {

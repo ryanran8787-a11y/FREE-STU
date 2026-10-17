@@ -2,6 +2,7 @@ import { router } from "@/server/trpc";
 import { attemptRouter } from "@/server/routers/attempt";
 import { chatRouter } from "@/server/routers/chat";
 import { generationRouter } from "@/server/routers/generation";
+import { linkRouter } from "@/server/routers/link";
 import { noteRouter } from "@/server/routers/note";
 import { reviewRouter } from "@/server/routers/review";
 import { systemRouter } from "@/server/routers/system";
@@ -13,6 +14,7 @@ export const appRouter = router({
   attempt: attemptRouter,
   chat: chatRouter,
   generation: generationRouter,
+  link: linkRouter,
   note: noteRouter,
   review: reviewRouter,
   system: systemRouter,
