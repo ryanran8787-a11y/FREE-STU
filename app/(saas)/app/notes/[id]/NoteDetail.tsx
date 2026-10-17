@@ -14,6 +14,7 @@ import { PodcastView } from "./PodcastView";
 import { CustomView } from "./CustomView";
 import { CustomSection } from "./CustomSection";
 import { BlindSpots } from "./BlindSpots";
+import { ConflictsCard } from "./ConflictsCard";
 
 type Gen = { id: string; type: string; status: string; result: string | null; error: string | null };
 
@@ -479,6 +480,7 @@ export function NoteDetail({ id }: { id: string }) {
             </div>
           )}
           {!busy && <BlindSpots noteId={id} onRegen={(f) => gen("quiz", f)} />}
+          {!busy && selected && <ConflictsCard genId={selected.id} conflicts={readConflicts(selected.options)} onRegen={(f) => gen("quiz", f)} />}
 
           <div className="card p-4">
             <h2 className="mb-2 text-sm font-bold">問這份筆記</h2>
@@ -580,7 +582,15 @@ export function NoteDetail({ id }: { id: string }) {
   );
 }
 
-function readSourceMap(optionsJson: string | null | undefined): Record<string, string[]> {
+  const readConflicts = (optsJson: string | null | undefined): string[] => {
+    try {
+      const o = JSON.parse(optsJson || "{}") as { conflicts?: unknown };
+      return Array.isArray(o.conflicts) ? (o.conflicts as string[]) : [];
+    } catch {
+      return [];
+    }
+  };
+  function readSourceMap(optionsJson: string | null | undefined): Record<string, string[]> {
   try {
     const o = JSON.parse(optionsJson || "{}") as { sourceMap?: unknown };
     if (o.sourceMap && typeof o.sourceMap === "object") {

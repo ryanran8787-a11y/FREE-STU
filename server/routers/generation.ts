@@ -72,9 +72,26 @@ function buildPrompt(type: z.infer<typeof generationType>, o: GenOptions, n: num
   }
   const count = n ?? 5;
   if (type === "flashcards") {
-    return `你是學習助教。根據以下筆記產生 ${count} 張${lang}閃卡，難度${DIFF_WORDS[o.difficulty]}，只回傳 JSON 陣列，每個元素 {front, back}，不要其他文字：${focus}\n\n`;
+    return `你是學習助教。根據以下筆記產生 ${count} 張${lang}閃卡，難度${DIFF_WORDS[o.difficulty]}，只回傳 JSON 陣列，每個元素 {front, back}，不要其他文字：${focus}
+
+若筆記內有互相矛盾的敘述，請在 JSON 陣列之後另起一行寫「⚠️ 衝突：A 說…，B 說…」，一行一個，沒有就不要寫。\n\n`;
   }
-  return `你是學習助教。根據以下筆記產生 ${count} 題${lang}單選測驗，難度${DIFF_WORDS[o.difficulty]}，只回傳 JSON 陣列，每個元素 {question, options(4個字串，不要加A/B/C/D編號), answer(正確選項的索引0-3), explanation(為什麼正確、一兩句話${lang})}，不要其他文字：${focus}\n\n`;
+  if (type === "quiz") {
+    return `你是學習助教。根據以下筆記產生 ${count} 題${lang}單選測驗，難度${DIFF_WORDS[o.difficulty]}，只回傳 JSON 陣列，每個元素 {question, options(4個字串，不要加A/B/C/D編號), answer(正確選項的索引0-3), explanation(為什麼正確、一兩句話${lang})}，不要其他文字：${focus}
+
+若筆記內有互相矛盾的敘述，請在 JSON 陣列之後另起一行寫「⚠️ 衝突：A 說…，B 說…」，一行一個，沒有就不要寫。\n\n`;
+  }
+  return "";
+}
+
+/** 從 LLM 輸出尾端抽「⚠️ 衝突：...」清單（知識衝突偵測） */
+export function parseConflicts(text: string): string[] {
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    const m = line.match(/⚠️\s*衝突[:：]\s*(.+)/);
+    if (m) out.push(m[1].trim());
+  }
+  return out;
 }
 
 function buildDialoguePrompt(lang: string, focus: string): string {
@@ -329,12 +346,13 @@ async function runGeneration(id: string) {
         text.trim(),
         new Set(paras.map((p) => p.id)),
       );
+      const conflicts = parseConflicts(text);
       await db.generation.update({
         where: { id },
         data: {
           status: "done",
           result: cleaned,
-          options: JSON.stringify({ ...o, customCount: custom, resolvedCount: n, chars, sourceMap }),
+          options: JSON.stringify({ ...o, customCount: custom, resolvedCount: n, chars, sourceMap, ...(conflicts.length > 0 ? { conflicts } : {}) }),
         },
       });
       return;
@@ -342,9 +360,14 @@ async function runGeneration(id: string) {
     const items = parseJsonArray(text);
     const clean = sanitizeItems(gen.type as "flashcards" | "quiz", items);
     if (clean.length === 0) throw new Error("模型回傳格式不符（已過濾無效題目，剩 0 題），再按一次生成");
+    const conflicts = parseConflicts(text);
     await db.generation.update({
       where: { id },
-      data: { status: "done", result: JSON.stringify(clean) },
+      data: {
+        status: "done",
+        result: JSON.stringify(clean),
+        ...(conflicts.length > 0 ? { options: JSON.stringify({ ...o, customCount: custom, resolvedCount: n, chars, conflicts }) } : {}),
+      },
     });
   } catch (e) {
     await db.generation.update({
