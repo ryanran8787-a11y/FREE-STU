@@ -17,6 +17,7 @@ import { CustomSection } from "./CustomSection";
 import { BlindSpots } from "./BlindSpots";
 import { ConflictsCard } from "./ConflictsCard";
 import { PlanView } from "./PlanView";
+import { EmptyState } from "./ResultCard";
 
 type Gen = { id: string; type: string; status: string; result: string | null; error: string | null; options: string; createdAt: Date };
 
@@ -686,15 +687,6 @@ export function NoteDetail({ id }: { id: string }) {
 }
 
 // ===== 輔助元件 =====
-
-function EmptyState({ icon, text }: { icon: React.ReactNode; text: string }) {
-  return (
-    <div className="card flex flex-col items-center gap-3 p-10 text-center text-muted">
-      {icon}
-      <p className="text-sm">{text}</p>
-    </div>
-  );
-}
 
 function GenSelector({ gens, selected, onSelect, latest }: { gens: Gen[]; selected: string | null; onSelect: (id: string) => void; latest: string | null }) {
   if (gens.length <= 1) return null;
