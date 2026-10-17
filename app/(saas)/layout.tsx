@@ -11,6 +11,7 @@ import { trpc } from "@/lib/trpc";
 const LINKS = [
   { href: "/app/chat", label: "對話" },
   { href: "/app/notes", label: "筆記" },
+  { href: "/app/review", label: "複習" },
   { href: "/app/settings", label: "設定" },
 ];
 

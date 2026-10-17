@@ -3,6 +3,7 @@ import { attemptRouter } from "@/server/routers/attempt";
 import { chatRouter } from "@/server/routers/chat";
 import { generationRouter } from "@/server/routers/generation";
 import { noteRouter } from "@/server/routers/note";
+import { reviewRouter } from "@/server/routers/review";
 import { systemRouter } from "@/server/routers/system";
 import { templateRouter } from "@/server/routers/template";
 import { usageRouter } from "@/server/routers/usage";
@@ -13,6 +14,7 @@ export const appRouter = router({
   chat: chatRouter,
   generation: generationRouter,
   note: noteRouter,
+  review: reviewRouter,
   system: systemRouter,
   template: templateRouter,
   usage: usageRouter,
