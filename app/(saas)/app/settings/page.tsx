@@ -21,6 +21,24 @@ const PRESET_GROUPS: { title: string; items: Preset[] }[] = [
         model: "glm-4-flash",
         note: "glm-4-flash 免費，中文不錯",
       },
+      {
+        label: "Groq",
+        baseUrl: "https://api.groq.com/openai/v1",
+        model: "llama-3.3-70b-versatile",
+        note: "免費額度大，速度快",
+      },
+      {
+        label: "Cloudflare AI",
+        baseUrl: "https://gateway.ai.cloudflare.com/v1/free",
+        model: "meta-llama/llama-3.1-8b-instruct",
+        note: "Cloudflare 免費額度，註冊即拿 key",
+      },
+      {
+        label: "Mistral",
+        baseUrl: "https://api.mistral.ai/v1",
+        model: "mistral-small",
+        note: "歐盟，免費額度可試",
+      },
     ],
   },
   {
@@ -31,6 +49,8 @@ const PRESET_GROUPS: { title: string; items: Preset[] }[] = [
       { label: "Moonshot（Kimi）", baseUrl: "https://api.moonshot.ai/v1", model: "kimi-k2", note: "長文本強，中文強" },
       { label: "Qwen（DashScope）", baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1", model: "qwen-plus", note: "阿里，中文強" },
       { label: "xAI（Grok）", baseUrl: "https://api.x.ai/v1", model: "grok-3-mini", note: "快" },
+      { label: "MiniMax", baseUrl: "https://api.minimax.chat/v1", model: "MiniMax-M1", note: "中國，長文本強" },
+      { label: "SiliconFlow", baseUrl: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen2.5-72B-Instruct", note: "中國，免費額度可試" },
       {
         label: "OpenRouter（轉發）",
         baseUrl: "https://openrouter.ai/api/v1",
