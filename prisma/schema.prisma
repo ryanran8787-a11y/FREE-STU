@@ -31,6 +31,7 @@ model Note {
   rawText     String
   createdAt   DateTime     @default(now())
   generations Generation[]
+  studyPlans  StudyPlan[]
 }
 
 model Generation {
@@ -89,4 +90,19 @@ model UsageLink {
 
   @@index([noteId, paraId])
   @@index([genId])
+}
+
+/** 學習計畫：AI 生成的每日學習排程（主題拆解 + 每天要複習的段落） */
+model StudyPlan {
+  id        String   @id @default(cuid())
+  noteId    String
+  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  days      Int
+  difficulty String  @default("medium")
+  result    String?
+  status    String   @default("pending")
+  error     String?
+  createdAt DateTime @default(now())
+
+  @@index([noteId, createdAt])
 }

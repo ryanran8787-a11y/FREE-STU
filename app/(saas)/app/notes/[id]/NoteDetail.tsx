@@ -15,6 +15,7 @@ import { CustomView } from "./CustomView";
 import { CustomSection } from "./CustomSection";
 import { BlindSpots } from "./BlindSpots";
 import { ConflictsCard } from "./ConflictsCard";
+import { PlanView } from "./PlanView";
 
 type Gen = { id: string; type: string; status: string; result: string | null; error: string | null; options: string; createdAt: Date };
 
@@ -25,6 +26,7 @@ const TABS = [
   { key: "flashcards", label: "閃卡", icon: CardIcon },
   { key: "podcast", label: "播客", icon: PodIcon },
   { key: "custom", label: "自訂", icon: SparkIcon },
+  { key: "plan", label: "計畫", icon: SparkIcon },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -591,6 +593,10 @@ export function NoteDetail({ id }: { id: string }) {
             ) : (
               <EmptyState icon={<SparkIcon size={28} />} text="還沒生成自訂內容，右邊 Studio 開一發。" />
             )
+          )}
+
+          {tab === "plan" && (
+            <PlanView noteId={id} title={noteTitle} />
           )}
 
           {/* 問這份筆記（永遠顯示在最下） */}
