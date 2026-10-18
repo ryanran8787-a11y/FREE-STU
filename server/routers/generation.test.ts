@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseConflicts, parseDialogue, sanitizeItems } from "./generation";
+import { parseConflicts, parseDialogue, sanitizeItems } from "../generation/validate";
 import { splitChunks } from "../podcast";
 
 describe("sanitizeItems", () => {
