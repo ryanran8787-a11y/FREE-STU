@@ -107,3 +107,27 @@ model StudyPlan {
 
   @@index([noteId, createdAt])
 }
+
+/**
+ * 複習卡：排程持久化（A2）。
+ * - key = (genId, qIndex) 唯一，一題一行；qIndex 越界的作答不建卡（quarantine）。
+ * - intervalDays / dueAt 由 server/review/queue 的 scheduleOne 算出，attempt.log 每次作答 upsert。
+ * - 沒有 FK（Generation 刪除時不清卡，queue 用 lazy backfill 過濾已刪的 gen；Note 刪除時 note router 主動清卡）。
+ * - 題目文字快照在 question（生成物被刪還能顯示；lazy backfill 時寫入）。
+ */
+model ReviewCard {
+  id           String   @id @default(cuid())
+  genId        String
+  noteId       String
+  kind         String   @default("quiz")
+  qIndex       Int
+  question     String   @default("")
+  intervalDays Int      @default(0)
+  dueAt        DateTime @default(now())
+  lapses       Int      @default(0)
+  updatedAt    DateTime @updatedAt
+
+  @@unique([genId, qIndex])
+  @@index([dueAt])
+  @@index([noteId])
+}

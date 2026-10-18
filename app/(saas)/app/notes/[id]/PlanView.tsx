@@ -36,6 +36,11 @@ export function PlanView({ noteId, title }: { noteId: string; title: string }) {
   if (active?.result) {
     try { parsed = JSON.parse(active.result); } catch { parsed = null; }
   }
+  // B1：已釘選的 task（qIndex 集合），用來切換按鈕文案。
+  const pinned = trpc.plan.pinnedTasks.useQuery({ planId: active?.id ?? "" }, { enabled: !!active?.id });
+  const pinnedSet = new Set(pinned.data ?? []);
+  const pin = trpc.plan.pinTask.useMutation({ onSuccess: () => { pinned.refetch(); utils.review.queue.invalidate(); } });
+  const unpin = trpc.plan.unpinTask.useMutation({ onSuccess: () => { pinned.refetch(); utils.review.queue.invalidate(); } });
 
   return (
     <div className="flex flex-col gap-4">
@@ -90,12 +95,29 @@ export function PlanView({ noteId, title }: { noteId: string; title: string }) {
                     <h3 className="text-sm font-bold">{d.title}</h3>
                   </div>
                   <ul className="mt-2 flex flex-col gap-1">
-                    {d.tasks.map((t, i) => (
-                      <li key={i} className="flex items-start gap-2 text-xs leading-relaxed">
-                        <span className="mt-0.5 text-muted">•</span>
-                        <span>{t}</span>
-                      </li>
-                    ))}
+                    {d.tasks.map((t, i) => {
+                      const qIndex = (d.day - 1) * 100 + i;
+                      const isPinned = pinnedSet.has(qIndex);
+                      return (
+                        <li key={i} className="flex items-start gap-2 text-xs leading-relaxed">
+                          <span className="mt-0.5 text-muted">•</span>
+                          <span className="min-w-0 flex-1">{t}</span>
+                          <button
+                            disabled={pin.isPending || unpin.isPending}
+                            onClick={() => {
+                              if (!active) return;
+                              if (isPinned) unpin.mutate({ planId: active.id, day: d.day, taskIndex: i });
+                              else pin.mutate({ planId: active.id, day: d.day, taskIndex: i });
+                            }}
+                            aria-pressed={isPinned}
+                            title={isPinned ? "已釘到複習佇列，點一下取消" : "釘到複習佇列（該天 08:00 到期）"}
+                            className={`shrink-0 rounded border px-1.5 py-0.5 text-[10px] disabled:opacity-60 ${isPinned ? "invert-chip border-ink font-semibold" : "border-line text-muted hover:border-muted"}`}
+                          >
+                            {isPinned ? "已釘" : "釘選"}
+                          </button>
+                        </li>
+                      );
+                    })}
                   </ul>
                 </div>
               ))}

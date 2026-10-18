@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { chatCompletion, getKeyOrThrow, logUsage } from "@/server/llm";
 import { globalStyle, withStyle } from "@/server/style";
 import { publicProcedure, router } from "@/server/trpc";
+import { planDueAt, planQIndex } from "@/server/plan/due";
 
 const difficulty = z.enum(["easy", "medium", "hard"]);
 const LANG_WORDS: Record<string, string> = { "zh-Hant": "繁體中文", "zh-Hans": "简体中文", en: "English" };
@@ -31,7 +32,62 @@ export const planRouter = router({
 
   remove: publicProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
     await db.studyPlan.delete({ where: { id: input.id } }).catch(() => undefined);
+    // 計畫刪掉 → 釘過的 plan 卡一起清（genId = planId）。
+    await db.reviewCard.deleteMany({ where: { genId: input.id, kind: "plan" } }).catch(() => undefined);
     return { ok: true };
+  }),
+
+  /**
+   * B1：把計畫的某個 task 釘成複習提醒 → kind="plan" 的 ReviewCard。
+   * - key = (genId=planId, qIndex=dayIndex*100+taskIndex)，重複釘=冪等（upsert）。
+   * - dueAt = 該天本地 08:00（planDueAt 純函數）；question = task 文字快照。
+   * - recordAttempt 不管 plan 卡；listDue 直接用 question 快照回，不解析 generation。
+   */
+  pinTask: publicProcedure
+    .input(z.object({ planId: z.string(), day: z.number().int().min(1).max(30), taskIndex: z.number().int().min(0).max(99) }))
+    .mutation(async ({ input }) => {
+      const plan = await db.studyPlan.findUnique({ where: { id: input.planId } });
+      if (!plan || !plan.result) throw new Error("找不到計畫");
+      let parsed: { day: number; title: string; tasks: string[] }[];
+      try {
+        parsed = JSON.parse(plan.result);
+      } catch {
+        throw new Error("計畫解析失敗");
+      }
+      const d = parsed.find((x) => x.day === input.day);
+      const task = d?.tasks?.[input.taskIndex];
+      if (!task) throw new Error("找不到該任務");
+      const qIndex = planQIndex(input.day, input.taskIndex);
+      const dueAt = planDueAt(input.day - 1);
+      const card = await db.reviewCard.upsert({
+        where: { genId_qIndex: { genId: plan.id, qIndex } },
+        create: {
+          genId: plan.id, noteId: plan.noteId, kind: "plan", qIndex,
+          question: `D${input.day} ${d.title}：${task}`,
+          intervalDays: 0, dueAt, lapses: 0,
+        },
+        update: {
+          noteId: plan.noteId, question: `D${input.day} ${d.title}：${task}`,
+        },
+      });
+      return { ok: true, dueAt: card.dueAt };
+    }),
+
+  unpinTask: publicProcedure
+    .input(z.object({ planId: z.string(), day: z.number().int().min(1).max(30), taskIndex: z.number().int().min(0).max(99) }))
+    .mutation(async ({ input }) => {
+      await db.reviewCard.delete({
+        where: { genId_qIndex: { genId: input.planId, qIndex: planQIndex(input.day, input.taskIndex) } },
+      }).catch(() => undefined);
+      return { ok: true };
+    }),
+
+  pinnedTasks: publicProcedure.input(z.object({ planId: z.string() })).query(async ({ input }) => {
+    const cards = await db.reviewCard.findMany({
+      where: { genId: input.planId, kind: "plan" },
+      select: { qIndex: true },
+    });
+    return cards.map((c) => c.qIndex);
   }),
 });
 

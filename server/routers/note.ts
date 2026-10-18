@@ -79,6 +79,8 @@ export const noteRouter = router({
     const gens = await db.generation.findMany({ where: { noteId: input.id }, select: { id: true } });
     await db.note.delete({ where: { id: input.id } });
     await removeNote(input.id).catch(() => undefined);
+    // A2：ReviewCard 無 FK，筆記刪掉後手動清卡（避免孤兒卡）
+    await db.reviewCard.deleteMany({ where: { noteId: input.id } }).catch(() => undefined);
     // 連帶清播客音檔（SQLite cascade 只刪 row，磁碟檔自己清）
     for (const g of gens) {
       await fs.unlink(path.join(process.cwd(), "data", "podcasts", `${g.id}.mp3`)).catch(() => undefined);

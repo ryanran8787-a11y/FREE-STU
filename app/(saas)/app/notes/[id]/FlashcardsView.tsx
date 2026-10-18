@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { downloadText, flashcardsToMd, safeName } from "@/lib/export";
+import { CardIcon } from "@/app/icons";
+import { EmptyState } from "./ResultCard";
 
 export type Flashcard = { front: string; back: string };
 
@@ -18,7 +20,7 @@ export function Flashcards({ result, title, genId }: { result: string; title: st
       utils.review.queue.invalidate();
     },
   });
-  if (cards.length === 0) return <p className="text-sm text-muted">空的。</p>;
+  if (cards.length === 0) return <EmptyState icon={<CardIcon size={28} />} text="這份閃卡是空的，重新生成一次就會有卡片。" />;
   const c = cards[Math.min(i, cards.length - 1)];
   function grade(correct: boolean, confidence: "high" | "med" | "low") {
     if (genId) log.mutate({ genId, qIndex: Math.min(i, cards.length - 1), correct, confidence });
@@ -33,7 +35,7 @@ export function Flashcards({ result, title, genId }: { result: string; title: st
         </button>
       </div>
       <div className="flip-scene">
-        <div className={`flip-inner ${flip ? "flipped" : ""}`} onClick={() => setFlip(!flip)}>
+        <div className={`flip-inner ${flip ? "flipped" : ""}`} onClick={() => setFlip(!flip)} role="button" aria-pressed={flip} aria-label={flip ? "翻回題面" : "翻到答案"} tabIndex={0} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setFlip(!flip); } }}>
           <div className="flip-face card flex min-h-44 cursor-pointer flex-col items-center justify-center p-6 text-center">
             <div className="text-xs font-semibold text-muted">題面 {i + 1}/{cards.length} · 點我翻面</div>
             <div className="mt-2 text-lg font-bold">{c.front}</div>
@@ -46,17 +48,17 @@ export function Flashcards({ result, title, genId }: { result: string; title: st
       </div>
       <div className="flex items-center gap-2">
         <button disabled={i === 0} onClick={() => { setI(i - 1); setFlip(false); }} className="btn-ghost !px-4 !py-1.5 text-sm">← 上張</button>
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line">
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuenow={i + 1} aria-valuemin={1} aria-valuemax={cards.length} aria-label={`第 ${i + 1} 張，共 ${cards.length} 張`}>
           <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${((i + 1) / cards.length) * 100}%` }} />
         </div>
         <button disabled={i >= cards.length - 1} onClick={() => { setI(i + 1); setFlip(false); }} className="btn-ghost !px-4 !py-1.5 text-sm">下張 →</button>
       </div>
       {flip && (
-        <div className="flex items-center justify-center gap-2 text-xs">
+        <div className="flex items-center justify-center gap-2 text-xs" role="group" aria-label="自評">
           <span className="text-muted">自評：</span>
-          <button onClick={() => grade(true, "high")} className="rounded border border-line px-3 py-1.5 font-semibold hover:border-muted">記得</button>
-          <button onClick={() => grade(true, "med")} className="rounded border border-line px-3 py-1.5 hover:border-muted">模糊</button>
-          <button onClick={() => grade(false, "low")} className="rounded border border-line px-3 py-1.5 hover:border-red-400 hover:text-red-600">忘了</button>
+          <button onClick={() => grade(true, "high")} aria-pressed={false} className="rounded border border-line px-3 py-1.5 font-semibold hover:border-muted">記得</button>
+          <button onClick={() => grade(true, "med")} aria-pressed={false} className="rounded border border-line px-3 py-1.5 hover:border-muted">模糊</button>
+          <button onClick={() => grade(false, "low")} aria-pressed={false} className="rounded border border-line px-3 py-1.5 hover:border-red-400 hover:text-red-600">忘了</button>
         </div>
       )}
     </div>

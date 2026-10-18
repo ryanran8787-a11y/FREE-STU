@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { publicProcedure, router } from "@/server/trpc";
+import { recordAttempt } from "@/server/review/cards";
 
 const confidence = z.enum(["high", "med", "low"]);
 
@@ -49,6 +50,13 @@ export const attemptRouter = router({
           correct: input.correct,
           confidence: input.confidence,
         },
+      });
+      // A2：作答後 upsert 複習卡（越界 qIndex 會被 quarantine、不建卡，Attempt 照寫）
+      await recordAttempt({
+        genId: input.genId,
+        qIndex: input.qIndex,
+        correct: input.correct,
+        confidence: input.confidence,
       });
       return { ok: true };
     }),

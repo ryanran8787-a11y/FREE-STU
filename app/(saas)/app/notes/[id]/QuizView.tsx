@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { trpc } from "@/lib/trpc";
 import { downloadText, quizToMd, safeName } from "@/lib/export";
+import { QuizIcon } from "@/app/icons";
+import { EmptyState } from "./ResultCard";
 
 function stripLabel(op: string): string {
   return op.replace(/^[A-D][、．.。:：\s]*/, "");
@@ -34,8 +36,11 @@ export function Quiz({ result, title, genId }: { result: string; title: string; 
       setExplainLoading((s) => { const n = new Set(s); n.delete(vars.qIndex); return n; });
     },
   });
-  const done = Object.keys(picked).length === qs.length;
+  const done = qs.length > 0 && Object.keys(picked).length === qs.length;
   const score = qs.filter((q, qi) => picked[qi] === q.answer).length;
+  if (qs.length === 0) {
+    return <EmptyState icon={<QuizIcon size={28} />} text="這份測驗是空的，重新生成一次就會有題目。" />;
+  }
   function pick(qi: number, oi: number, correct: boolean) {
     if (genId) log.mutate({ genId, qIndex: qi, picked: oi, correct, confidence: conf[qi] ?? "med" });
     setPicked((p) => (p[qi] !== undefined ? p : { ...p, [qi]: oi }));
@@ -53,27 +58,29 @@ export function Quiz({ result, title, genId }: { result: string; title: string; 
         </button>
       </div>
       {done && (
-        <div className="card rise border-accent bg-accent-soft p-4 text-center font-bold text-ink">
+        <div className="card rise border-accent bg-accent-soft p-4 text-center font-bold text-ink" role="status">
           {score}/{qs.length} 分 {score === qs.length ? "全對！" : score >= qs.length / 2 ? "不錯，錯的再看一次" : "加油，再複習一下"}
         </div>
       )}
       {qs.map((q, qi) => (
         <div key={qi} className="card p-4">
           <div className="text-sm font-bold">{qi + 1}. {q.question}</div>
-          <div className="mt-2 flex items-center gap-1 text-[11px]">
+          <div className="mt-2 flex items-center gap-1 text-[11px]" role="radiogroup" aria-label={`第 ${qi + 1} 題信心`}>
             <span className="text-muted">信心：</span>
             {([["high", "有把握"], ["med", "不確定"], ["low", "瞎猜"]] as const).map(([v, label]) => (
               <button
                 key={v}
                 disabled={picked[qi] !== undefined}
                 onClick={() => setConf((c) => ({ ...c, [qi]: v }))}
+                role="radio"
+                aria-checked={(conf[qi] ?? "med") === v}
                 className={`rounded border px-1.5 py-0.5 ${((conf[qi] ?? "med") === v) ? "invert-chip border-ink font-semibold" : "border-line text-muted hover:border-muted"} disabled:opacity-60`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <div className="mt-2 flex flex-col gap-1.5">
+          <div className="mt-2 flex flex-col gap-1.5" role="list" aria-label={`第 ${qi + 1} 題選項`}>
             {q.options.map((raw, oi) => {
               const op = stripLabel(raw);
               const sel = picked[qi] === oi;
@@ -83,6 +90,7 @@ export function Quiz({ result, title, genId }: { result: string; title: string; 
                 <button
                   key={oi}
                   onClick={() => pick(qi, oi, oi === q.answer)}
+                  aria-pressed={sel}
                   className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
                     show && correct
                       ? "border-accent bg-accent-soft font-semibold"
