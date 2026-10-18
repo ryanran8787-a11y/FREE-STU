@@ -18,6 +18,7 @@ import { BlindSpots } from "./BlindSpots";
 import { ConflictsCard } from "./ConflictsCard";
 import { PlanView } from "./PlanView";
 import { EmptyState } from "./ResultCard";
+import { TagsEditor } from "./TagsEditor";
 
 type Gen = { id: string; type: string; status: string; result: string | null; error: string | null; options: string; createdAt: Date };
 
@@ -183,9 +184,10 @@ export function NoteDetail({ id }: { id: string }) {
   return (
     <div className="flex flex-col gap-4">
       {/* 標頭 */}
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
         <Link href="/app/notes" className="text-muted hover:text-ink">← 筆記</Link>
         <h1 className="truncate text-lg font-extrabold tracking-tight">{note.data.title}</h1>
+        <TagsEditor noteId={note.data.id} tags={note.data.tags} />
         <DeleteNoteButton id={note.data.id} />
       </div>
 

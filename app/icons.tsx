@@ -6,6 +6,7 @@ import {
   Layers,
   ListChecks,
   MessageCircle,
+  Search,
   Sparkles,
   Upload,
   type LucideProps,
@@ -26,3 +27,4 @@ export const SparkIcon = wrap(Sparkles);
 export const BagIcon = wrap(Backpack);
 export const UploadIcon = wrap(Upload);
 export const PodIcon = wrap(AudioLines);
+export const SearchIcon = wrap(Search);

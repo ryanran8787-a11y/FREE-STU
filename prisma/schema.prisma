@@ -29,6 +29,7 @@ model Note {
   id          String       @id @default(cuid())
   title       String       @default("未命名筆記")
   rawText     String
+  tags        String       @default("")
   createdAt   DateTime     @default(now())
   generations Generation[]
   studyPlans  StudyPlan[]

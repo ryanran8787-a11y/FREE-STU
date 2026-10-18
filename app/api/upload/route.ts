@@ -1,6 +1,7 @@
 import mammoth from "mammoth";
 import { db } from "@/lib/db";
 import { ocrPage, pdfPageCount, pdfPageText } from "@/server/ocr";
+import { indexNote } from "@/server/search";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_CHARS = 60000;
@@ -72,6 +73,8 @@ export async function POST(req: Request) {
     const note = await db.note.create({
       data: { title, rawText: text.slice(0, MAX_CHARS) },
     });
+    // 同步全文索引；失敗不擋上傳（搜尋是加值功能，ensureFts 會自我修復）
+    await indexNote(note.id).catch(() => undefined);
     return Response.json({ id: note.id, chars: Math.min(text.length, MAX_CHARS) });
   } catch (e) {
     return Response.json(

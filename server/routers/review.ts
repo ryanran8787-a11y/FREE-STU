@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { publicProcedure, router } from "@/server/trpc";
+import { computeDue, type QueueItemInput } from "@/server/review/queue";
 
 export const reviewRouter = router({
   /** 複習與學習紀錄：每天答對率、信心校準、弱點主題（全 SQL，零 token） */
@@ -92,4 +93,59 @@ export const reviewRouter = router({
       streak,
     };
   }),
+
+  /** 今日複習佇列：quiz + flashcards 的每題作答歷史 → computeDue，無狀態 SM-2 簡化版 */
+  queue: publicProcedure
+    .input(z.object({ limit: z.number().int().min(1).max(100).default(30) }))
+    .query(async ({ input }) => {
+      const gens = await db.generation.findMany({
+        where: { type: { in: ["quiz", "flashcards"] }, status: "done", result: { not: null } },
+        orderBy: { createdAt: "desc" },
+        take: 100,
+        include: { note: { select: { title: true } } },
+      });
+      if (gens.length === 0) return { items: [], total: 0 };
+      const attempts = await db.attempt.findMany({
+        where: { genId: { in: gens.map((g) => g.id) } },
+        orderBy: { createdAt: "asc" },
+      });
+      const byQ = new Map<string, typeof attempts>();
+      for (const a of attempts) {
+        const k = `${a.genId}:${a.qIndex}`;
+        const arr = byQ.get(k) ?? [];
+        arr.push(a);
+        byQ.set(k, arr);
+      }
+      const items: QueueItemInput[] = [];
+      for (const g of gens) {
+        let qs: string[] = [];
+        try {
+          const parsed = JSON.parse(g.result as string) as ({ question?: string; front?: string }[]);
+          qs = parsed.map((q) => q.question ?? q.front ?? "（題目解析失敗）");
+        } catch {
+          continue;
+        }
+        for (let qi = 0; qi < qs.length; qi++) {
+          const evts = (byQ.get(`${g.id}:${qi}`) ?? []).map((a) => ({
+            correct: a.correct,
+            confidence: (a.confidence === "high" || a.confidence === "low" ? a.confidence : "med") as
+              | "high"
+              | "med"
+              | "low",
+            at: a.createdAt.getTime(),
+          }));
+          items.push({
+            noteId: g.noteId,
+            noteTitle: g.note.title,
+            genId: g.id,
+            kind: g.type,
+            qIndex: qi,
+            question: qs[qi],
+            events: evts,
+          });
+        }
+      }
+      const due = computeDue(items, Date.now());
+      return { items: due.slice(0, input.limit), total: due.length };
+    }),
 });

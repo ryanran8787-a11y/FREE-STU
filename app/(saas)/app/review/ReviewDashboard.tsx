@@ -9,13 +9,15 @@ function fmtDate(s: string): string {
   return `${d.getMonth() + 1}/${d.getDate()}`;
 }
 
-/** 30 天學習曲線＋弱點主題＋信心校準率。全走 attempt.stats/review.summary，零 token。 */
+/** 30 天學習曲線＋今日複習佇列＋弱點主題＋信心校準率。全走 attempt/review，零 token。 */
 export function ReviewDashboard() {
   const summary = trpc.review.summary.useQuery({ days: 30 });
+  const queue = trpc.review.queue.useQuery({ limit: 20 });
   const notes = trpc.note.list.useQuery();
   if (summary.isLoading) return <div className="card p-4 text-sm text-muted">讀取中…</div>;
   const s = summary.data!;
-  if (s.total === 0) {
+  const dueTotal = queue.data?.total ?? 0;
+  if (s.total === 0 && dueTotal === 0) {
     return (
       <div className="card flex flex-col items-center gap-2 p-8 text-center text-muted">
         <p className="text-sm">還沒有作答紀錄。</p>
@@ -27,6 +29,27 @@ export function ReviewDashboard() {
   const maxAcc = Math.max(1, ...s.days.map((d) => d.total));
   return (
     <div className="flex flex-col gap-4">
+      {queue.data && queue.data.total > 0 && (
+        <div className="card border-primary bg-primary-soft p-4">
+          <h2 className="text-sm font-bold">今日複習（{queue.data.total} 題到期）</h2>
+          <ul className="mt-2 flex flex-col gap-1.5">
+            {queue.data.items.map((d) => (
+              <li key={`${d.genId}:${d.qIndex}`} className="flex items-center gap-2 text-sm">
+                <span className="shrink-0 rounded border border-line bg-paper px-1.5 py-0.5 text-[10px] text-muted">
+                  {d.kind === "quiz" ? "測驗" : "閃卡"}
+                </span>
+                <Link href={`/app/notes/${d.noteId}`} className="min-w-0 flex-1 truncate hover:underline" title={d.question}>
+                  {d.question}
+                </Link>
+                <span className="shrink-0 text-[11px] text-muted" title={`下次間隔 ${d.intervalDays} 天`}>
+                  {d.reason}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-[11px] text-muted">點題目回到所屬筆記作答，答完自動排下一次。</p>
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <div className="card p-4">
           <div className="text-xs font-semibold text-muted">30 天作答</div>

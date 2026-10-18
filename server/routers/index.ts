@@ -6,6 +6,7 @@ import { linkRouter } from "@/server/routers/link";
 import { noteRouter } from "@/server/routers/note";
 import { planRouter } from "@/server/routers/plan";
 import { reviewRouter } from "@/server/routers/review";
+import { searchRouter } from "@/server/routers/search";
 import { systemRouter } from "@/server/routers/system";
 import { templateRouter } from "@/server/routers/template";
 import { usageRouter } from "@/server/routers/usage";
@@ -19,6 +20,7 @@ export const appRouter = router({
   note: noteRouter,
   plan: planRouter,
   review: reviewRouter,
+  search: searchRouter,
   system: systemRouter,
   template: templateRouter,
   usage: usageRouter,

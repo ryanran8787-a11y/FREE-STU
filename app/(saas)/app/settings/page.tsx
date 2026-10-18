@@ -165,6 +165,38 @@ export default function SettingsPage() {
   const [vMsg, setVMsg] = useState("");
   const [sysPrompt, setSysPrompt] = useState("");
   const [sysMsg, setSysMsg] = useState("");
+  const [backing, setBacking] = useState(false);
+  const [backupMsg, setBackupMsg] = useState("");
+
+  async function downloadBackup() {
+    if (backing) return;
+    setBacking(true);
+    setBackupMsg("");
+    try {
+      const res = await fetch("/api/backup");
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(json.error ?? `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const cd = res.headers.get("Content-Disposition") ?? "";
+      const m = /filename="([^"]+)"/.exec(cd);
+      a.href = url;
+      a.download = m?.[1] ?? "free-stu-backup.zip";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      const mb = (blob.size / 1024 / 1024).toFixed(1);
+      setBackupMsg(`已下載（${mb} MB）。`);
+    } catch (e) {
+      setBackupMsg(`備份失敗：${e instanceof Error ? e.message : "未知錯誤"}`);
+    } finally {
+      setBacking(false);
+    }
+  }
 
   useEffect(() => {
     if (status.data?.hasKey) {
@@ -404,6 +436,20 @@ export default function SettingsPage() {
           {setSystem.isPending ? "儲存中…" : "儲存系統提示詞"}
         </button>
         {sysMsg && <p className="text-sm">{sysMsg}</p>}
+      </div>
+
+      {/* 全庫備份下載 */}
+      <div className="card flex flex-col gap-3 p-4 md:p-5">
+        <h2 className="font-extrabold">備份全站資料</h2>
+        <p className="text-sm text-muted">
+          下載一個 zip，內含資料庫快照（筆記、生成、作答紀錄、API key）與所有播客音檔。
+          快照是寫入一致性的（VACUUM INTO），進行中的生成不會出現半套資料。
+          換電腦時：解開 zip、把 database.db 放到 prisma/ 下、podcasts/ 放到 data/ 下即可。
+        </p>
+        <button onClick={downloadBackup} disabled={backing} className="btn-primary self-start">
+          {backing ? "打包中…" : "⬇ 下載備份 zip"}
+        </button>
+        {backupMsg && <p className="text-sm">{backupMsg}</p>}
       </div>
 
       <PhoneConnect />

@@ -20,6 +20,7 @@
     "html-to-image": "^1.11.13",
     "lucide-react": "^1.55.0",
     "mammoth": "^1.13.0",
+    "markmap-common": "^0.18.9",
     "markmap-lib": "^0.18.12",
     "markmap-view": "^0.18.12",
     "next": "16.4.0",

@@ -13,4 +13,17 @@ export default defineConfig({
   datasource: {
     url: env("DATABASE_URL"),
   },
+  // NoteFts 是 FTS5 虛擬表，Prisma schema 表達不了（連帶的 _config/_data/_idx 等影子表也一樣）。
+  // 不宣告成 external 的話，migrate dev 會把它當成 drift 而想 DROP，進而誘發 reset 清掉使用者筆記。
+  experimental: { externalTables: true },
+  tables: {
+    external: [
+      "NoteFts",
+      "NoteFts_config",
+      "NoteFts_content",
+      "NoteFts_data",
+      "NoteFts_docsize",
+      "NoteFts_idx",
+    ],
+  },
 });

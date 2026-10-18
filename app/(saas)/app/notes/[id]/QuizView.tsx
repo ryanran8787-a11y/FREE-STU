@@ -18,7 +18,12 @@ export function Quiz({ result, title, genId }: { result: string; title: string; 
   const [explain, setExplain] = useState<Record<number, string>>({});
   const [explainLoading, setExplainLoading] = useState<Set<number>>(new Set());
   const utils = trpc.useUtils();
-  const log = trpc.attempt.log.useMutation({ onSuccess: () => utils.attempt.stats.invalidate() });
+  const log = trpc.attempt.log.useMutation({
+    onSuccess: () => {
+      utils.attempt.stats.invalidate();
+      utils.review.queue.invalidate();
+    },
+  });
   const explainMut = trpc.generation.explain.useMutation({
     onSuccess: (data, vars) => {
       setExplain((prev) => ({ ...prev, [vars.qIndex]: data.text }));

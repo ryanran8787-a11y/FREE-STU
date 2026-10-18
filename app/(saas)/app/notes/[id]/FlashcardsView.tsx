@@ -12,7 +12,12 @@ export function Flashcards({ result, title, genId }: { result: string; title: st
   const [i, setI] = useState(0);
   const [flip, setFlip] = useState(false);
   const utils = trpc.useUtils();
-  const log = trpc.attempt.log.useMutation({ onSuccess: () => utils.attempt.stats.invalidate() });
+  const log = trpc.attempt.log.useMutation({
+    onSuccess: () => {
+      utils.attempt.stats.invalidate();
+      utils.review.queue.invalidate();
+    },
+  });
   if (cards.length === 0) return <p className="text-sm text-muted">空的。</p>;
   const c = cards[Math.min(i, cards.length - 1)];
   function grade(correct: boolean, confidence: "high" | "med" | "low") {
