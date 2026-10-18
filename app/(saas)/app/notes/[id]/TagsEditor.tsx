@@ -29,15 +29,11 @@ export function TagsEditor({ noteId, tags }: { noteId: string; tags: string }) {
   if (!editing) {
     return (
       <span className="flex flex-wrap items-center gap-1">
-        {list.length > 0 ? (
-          list.map((t) => (
+        {list.map((t) => (
             <span key={t} className="rounded-full bg-primary-soft px-2 py-0.5 text-[10px] font-semibold text-primary-deep">
               {t}
             </span>
-          ))
-        ) : (
-          <span className="text-[10px] text-muted">無標籤</span>
-        )}
+          ))}
         <button
           onClick={() => {
             setDraft(tags);

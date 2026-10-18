@@ -182,7 +182,7 @@ export function NoteDetail({ id }: { id: string }) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 pb-24">
       {/* 標頭 */}
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Link href="/app/notes" className="text-muted hover:text-ink">← 筆記</Link>
@@ -194,8 +194,9 @@ export function NoteDetail({ id }: { id: string }) {
       {/* Tab bar */}
       <div className="flex gap-0 border-b border-line overflow-x-auto">
         {TABS.map((t) => {
-          const count = null;
-          const hasContent = true;
+          const genType = t.key === "flashcards" || t.key === "quiz" || t.key === "mindmap" || t.key === "podcast" || t.key === "custom" ? t.key : null;
+          const count = genType ? doneGens.filter((g) => g.type === genType).length : 0;
+          const hasCount = genType !== null && count > 0;
           return (
             <button
               key={t.key}
@@ -204,13 +205,13 @@ export function NoteDetail({ id }: { id: string }) {
                 tab === t.key
                   ? "border-primary text-ink"
                   : "border-transparent text-muted hover:text-ink"
-              } ${!hasContent && t.key !== "note" ? "opacity-40" : ""}`}
+              }`}
             >
               {t.icon && <t.icon size={14} />}
               {t.label}
-              {hasContent && t.key !== "note" && (
+              {hasCount && count > 0 && (
                 <span className="ml-0.5 rounded-full bg-primary-soft px-1.5 py-0.5 text-[10px] font-bold text-primary-deep">
-                  {doneGens.filter((g) => g.type === t.key).length}
+                  {count}
                 </span>
               )}
             </button>
