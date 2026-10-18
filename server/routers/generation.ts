@@ -227,7 +227,7 @@ async function runCustom(id: string, note: { title: string; rawText: string }, o
   }
 }
 
-async function runPodcast(id: string, note: { title: string; rawText: string }, options: Partial<GenOptions>) {
+async function runPodcast(id: string, noteId: string, note: { title: string; rawText: string }, options: Partial<GenOptions>) {
   try {
     const mode = options.podcastMode === "dialogue" ? "dialogue" : "read";
     const pair: VoicePairId = options.voicePair === "tw" ? "tw" : "cn";
@@ -271,8 +271,8 @@ async function runPodcast(id: string, note: { title: string; rawText: string }, 
     await fs.writeFile(path.join(dir, `${id}.mp3`), audio);
     // 雙向追蹤：每段用 TF 對應原文段落
     const plinks = lines.map((l) => {
-      const hits = searchNotes([{ id, title: note.title, rawText }], l.text, 1, 500);
-      return { noteId: id, paraId: hits[0]?.paraId ?? "p0", genId: id, kind: "podcast" };
+      const hits = searchNotes([{ id: noteId, title: note.title, rawText }], l.text, 1, 500);
+      return { noteId, paraId: hits[0]?.paraId ?? "p0", genId: id, kind: "podcast" };
     });
     if (plinks.length > 0) await db.usageLink.createMany({ data: plinks });
     const chars = lines.reduce((a, l) => a + l.text.length, 0);
@@ -306,7 +306,7 @@ async function runGeneration(id: string) {
     } catch {
       /* ignore */
     }
-    if (gen.type === "podcast") await runPodcast(id, { title: gen.note.title, rawText: gen.note.rawText }, options);
+    if (gen.type === "podcast") await runPodcast(id, gen.noteId, { title: gen.note.title, rawText: gen.note.rawText }, options);
     else await runCustom(id, { title: gen.note.title, rawText: gen.note.rawText }, options);
     return;
   }
