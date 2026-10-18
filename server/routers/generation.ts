@@ -16,7 +16,6 @@ import {
   type SimpleMethod,
 } from "@/server/custom";
 import {
-  DIALOGUE_CHAR_CAP,
   READ_CHAR_CAP,
   splitChunks,
   synthesizeLines,
@@ -24,162 +23,51 @@ import {
   type VoicePairId,
 } from "@/server/podcast";
 import { publicProcedure, router } from "@/server/trpc";
+import {
+  countLevel,
+  customKind,
+  customLength,
+  customMethod,
+  difficulty,
+  generationType,
+  LANG_WORDS,
+  language,
+  normalizeCustomCount,
+  normalizeOptions,
+  podcastMode,
+  safeParseOptions,
+  voicePair,
+  type GenOptions,
+} from "@/server/generation/options";
+import { buildDialoguePrompt, buildPrompt } from "@/server/generation/prompts";
+import { parseConflicts, parseDialogue, sanitizeItems } from "@/server/generation/validate";
 
-const generationType = z.enum(["flashcards", "quiz", "mindmap", "podcast", "custom"]);
-const countLevel = z.enum(["less", "standard", "more"]);
-const difficulty = z.enum(["easy", "medium", "hard"]);
-const language = z.enum(["zh-Hant", "zh-Hans", "en"]);
-const podcastMode = z.enum(["read", "dialogue"]);
-const voicePair = z.enum(["cn", "tw"]);
-const customKind = z.enum(["simple", "template", "raw"]);
-const customMethod = z.enum(["explain", "points", "table", "story"]);
-const customLength = z.enum(["short", "standard", "long"]);
-
-const DIFF_WORDS: Record<string, string> = {
-  easy: "簡單（基礎記憶、定義）",
-  medium: "中等（理解應用）",
-  hard: "困難（綜合分析、陷阱題）",
-};
-
-const LANG_WORDS: Record<string, string> = {
-  "zh-Hant": "繁體中文",
-  "zh-Hans": "简体中文",
-  en: "English",
-};
-
-export type GenOptions = {
-  count: z.infer<typeof countLevel>;
-  difficulty: z.infer<typeof difficulty>;
-  language: z.infer<typeof language>;
-  focus: string;
-  customCount?: number;
-  podcastMode?: z.infer<typeof podcastMode>;
-  voicePair?: z.infer<typeof voicePair>;
-  customKind?: z.infer<typeof customKind>;
-  customMethod?: z.infer<typeof customMethod>;
-  customLength?: z.infer<typeof customLength>;
-  customHintFirst?: boolean;
-  customTemplateId?: string;
-  customBody?: string;
-  explainCache?: Record<string, string>;
-};
-
-function buildPrompt(type: z.infer<typeof generationType>, o: GenOptions, n: number | null): string {
-  const lang = LANG_WORDS[o.language];
-  const focus = o.focus.trim() ? `\n主題聚焦：${o.focus.trim().slice(0, 500)}（優先圍繞這個主題出題）` : "";
-  if (type === "mindmap") {
-    const depth = o.count === "less" ? "精簡（最多2層、每層不超過4個分支）" : o.count === "more" ? "詳盡（3-4層、多分支、全覆蓋）" : "標準（3層、每層3-6個分支）";
-    return `你是學習助教。根據以下編號段落產生一份${lang}心智圖大綱，${depth}，難度${DIFF_WORDS[o.difficulty]}。只回傳 Markdown（# 主題、## 分支、### 葉節點），不要程式碼圍欄、不要其他文字。重要：每個 ## / ### 標題末尾必須標註它依據的段落編號，形如「## 監護宣告 [p3,p7]」或區間「## 行為能力 [p6-p7]」，編號只能用下面給出的，未依據任何段落就不要標：${focus}\n\n`;
-  }
-  const count = n ?? 5;
-  if (type === "flashcards") {
-    return `你是學習助教。根據以下筆記產生 ${count} 張${lang}閃卡，難度${DIFF_WORDS[o.difficulty]}，只回傳 JSON 陣列，每個元素 {front, back}，不要其他文字：${focus}
-
-若筆記內有互相矛盾的敘述，請在 JSON 陣列之後另起一行寫「⚠️ 衝突：A 說…，B 說…」，一行一個，沒有就不要寫。\n\n`;
-  }
-  if (type === "quiz") {
-    return `你是學習助教。根據以下筆記產生 ${count} 題${lang}單選測驗，難度${DIFF_WORDS[o.difficulty]}，只回傳 JSON 陣列，每個元素 {question, options(4個字串，不要加A/B/C/D編號), answer(正確選項的索引0-3), explanation(為什麼正確、一兩句話${lang})}，不要其他文字：${focus}
-
-若筆記內有互相矛盾的敘述，請在 JSON 陣列之後另起一行寫「⚠️ 衝突：A 說…，B 說…」，一行一個，沒有就不要寫。\n\n`;
-  }
-  return "";
-}
-
-/** 從 LLM 輸出尾端抽「⚠️ 衝突：...」清單（知識衝突偵測） */
-export function parseConflicts(text: string): string[] {
-  const out: string[] = [];
-  for (const line of text.split("\n")) {
-    const m = line.match(/⚠️\s*衝突[:：]\s*(.+)/);
-    if (m) out.push(m[1].trim());
-  }
-  return out;
-}
-
-function buildDialoguePrompt(lang: string, focus: string): string {
-  const f = focus.trim() ? `\n主題聚焦：${focus.trim().slice(0, 500)}（優先圍繞這個主題聊）` : "";
-  return `你是播客編劇。根據以下筆記寫一段${lang}雙人對談逐字稿：A 是主持人（提問、串場、幫聽眾總結），B 是講解者（用人話講清楚概念，可以舉例）。10 到 16 輪，兩人輪流發言，每句 150 字以內，總長 2000 字以內，口語、不要書面腔，不要開場白以外的廢話。只回傳 JSON 陣列，每個元素 {speaker（只能是 "A" 或 "B"）, text}，不要其他文字：${f}\n\n`;
-}
-
-/** 閃卡/測驗回傳驗證：爛掉的單題丟掉不存（F-1：以前 answer 越界會存進「永遠答不對的題」） */
-export function sanitizeItems(
-  type: "flashcards" | "quiz",
-  items: unknown[],
-): { front: string; back: string }[] | { question: string; options: string[]; answer: number; explanation?: string }[] {
-  if (type === "flashcards") {
-    const out: { front: string; back: string }[] = [];
-    for (const it of items) {
-      const r = it as { front?: unknown; back?: unknown };
-      if (typeof r.front !== "string" || !r.front.trim()) continue;
-      out.push({ front: r.front.trim(), back: typeof r.back === "string" ? r.back : "" });
-    }
-    return out;
-  }
-  const out: { question: string; options: string[]; answer: number; explanation?: string }[] = [];
-  for (const it of items) {
-    const r = it as { question?: unknown; options?: unknown; answer?: unknown; explanation?: unknown };
-    if (typeof r.question !== "string" || !r.question.trim()) continue;
-    const opts = (Array.isArray(r.options) ? r.options : [])
-      .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
-      .map((o) => o.trim())
-      .slice(0, 4);
-    if (opts.length < 2) continue;
-    const answer = typeof r.answer === "number" ? Math.min(opts.length - 1, Math.max(0, Math.floor(r.answer))) : 0;
-    out.push({
-      question: r.question.trim(),
-      options: opts,
-      answer,
-      ...(typeof r.explanation === "string" && r.explanation.trim() ? { explanation: r.explanation.trim() } : {}),
-    });
-  }
-  return out;
-}
-
-/** 對話稿驗證：只留下合法的輪次，總長封頂 */
-export function parseDialogue(text: string): PodLine[] {
-  let raw: { speaker?: unknown; text?: unknown }[];
-  try {
-    raw = parseJsonArray(text) as { speaker?: unknown; text?: unknown }[];
-  } catch {
-    return []; // 模型沒照格式回，上層轉成人話錯誤
-  }
-  const lines: PodLine[] = [];
-  let total = 0;
-  for (const r of raw) {
-    if (lines.length >= 40) break;
-    const speaker = r.speaker === "B" ? "B" : r.speaker === "A" ? "A" : null;
-    const t = typeof r.text === "string" ? r.text.trim() : "";
-    if (!speaker || !t) continue;
-    const cut = t.slice(0, 600);
-    if (total + cut.length > DIALOGUE_CHAR_CAP) break;
-    total += cut.length;
-    lines.push({ speaker, text: cut });
-  }
-  return lines;
-}
+// 測試沿用舊路徑：從 router re-export（瘦身期相容墊片）
+export { parseConflicts, parseDialogue, sanitizeItems };
 
 async function runCustom(id: string, note: { title: string; rawText: string }, options: Partial<GenOptions>) {
   try {
-    const kind = options.customKind === "template" || options.customKind === "raw" ? options.customKind : "simple";
-    const lang = options.language === "zh-Hans" || options.language === "en" ? options.language : "zh-Hant";
-    const langName = LANG_WORDS[lang];
-    const diffWord = options.difficulty === "easy" ? "簡單" : options.difficulty === "hard" ? "困難" : "中等";
-    const focus = typeof options.focus === "string" ? options.focus : "";
+    const o = normalizeOptions(options);
+    const kind = o.customKind === "template" || o.customKind === "raw" ? o.customKind : "simple";
+    const langName = LANG_WORDS[o.language];
+    const diffWord = o.difficulty === "easy" ? "簡單" : o.difficulty === "hard" ? "困難" : "中等";
+    const focus = o.focus;
     const chars = note.rawText.length;
-    const custom = typeof options.customCount === "number" ? Math.min(50, Math.max(1, Math.floor(options.customCount))) : undefined;
-    const n = custom ?? flashcardCount(chars, (options.count === "less" || options.count === "more" ? options.count : "standard") as CountLevel);
+    const custom = normalizeCustomCount(o.customCount);
+    const n = custom ?? flashcardCount(chars, o.count as CountLevel);
     const key = await getKeyOrThrow();
     let prompt: string;
     if (kind === "simple") {
       const method: SimpleMethod =
-        options.customMethod === "points" || options.customMethod === "table" || options.customMethod === "story"
-          ? options.customMethod
+        o.customMethod === "points" || o.customMethod === "table" || o.customMethod === "story"
+          ? o.customMethod
           : "explain";
-      const length: SimpleLength = options.customLength === "short" || options.customLength === "long" ? options.customLength : "standard";
-      prompt = withStyle(buildSimplePrompt(method, length, options.customHintFirst === true, langName, focus) + note.rawText.slice(0, 12000), await globalStyle(), false);
+      const length: SimpleLength = o.customLength === "short" || o.customLength === "long" ? o.customLength : "standard";
+      prompt = withStyle(buildSimplePrompt(method, length, o.customHintFirst === true, langName, focus) + note.rawText.slice(0, 12000), await globalStyle(), false);
     } else {
       let body: string;
       if (kind === "template") {
-        const tid = options.customTemplateId || "";
+        const tid = o.customTemplateId || "";
         const builtin = BUILTIN_TEMPLATES.find((t) => t.id === tid);
         if (builtin) {
           body = builtin.body;
@@ -189,7 +77,7 @@ async function runCustom(id: string, note: { title: string; rawText: string }, o
           body = tpl.body;
         }
       } else {
-        body = (options.customBody || "").trim();
+        body = (o.customBody || "").trim();
         if (!body) throw new Error("自訂 Prompt 是空的");
       }
       const paras = headParagraphs(note.rawText);
@@ -216,7 +104,7 @@ async function runCustom(id: string, note: { title: string; rawText: string }, o
       data: {
         status: "done",
         result: text.trim().slice(0, 40000),
-        options: JSON.stringify({ ...options, customKind: kind, resolvedCount: n, chars }),
+        options: JSON.stringify({ ...o, customKind: kind, resolvedCount: n, chars }),
       },
     });
   } catch (e) {
@@ -229,16 +117,16 @@ async function runCustom(id: string, note: { title: string; rawText: string }, o
 
 async function runPodcast(id: string, noteId: string, note: { title: string; rawText: string }, options: Partial<GenOptions>) {
   try {
-    const mode = options.podcastMode === "dialogue" ? "dialogue" : "read";
-    const pair: VoicePairId = options.voicePair === "tw" ? "tw" : "cn";
-    const lang = options.language === "zh-Hans" || options.language === "en" ? options.language : "zh-Hant";
-    const focus = typeof options.focus === "string" ? options.focus : "";
+    const o = normalizeOptions(options);
+    const mode = o.podcastMode === "dialogue" ? "dialogue" : "read";
+    const pair: VoicePairId = o.voicePair === "tw" ? "tw" : "cn";
+    const focus = o.focus;
     const rawText = note.rawText;
     let lines: PodLine[];
     let focused = false;
     if (mode === "dialogue") {
       const key = await getKeyOrThrow();
-      const langName = lang === "zh-Hans" ? "简体中文" : lang === "en" ? "English" : "繁體中文";
+      const langName = LANG_WORDS[o.language];
       const { text, usage } = await chatCompletion({
         baseUrl: key.baseUrl,
         apiKey: key.apiKey,
@@ -281,7 +169,7 @@ async function runPodcast(id: string, noteId: string, note: { title: string; raw
       data: {
         status: "done",
         result: JSON.stringify({ mode, voicePair: pair, lines, chars, focused }),
-        options: JSON.stringify({ ...options, podcastMode: mode, voicePair: pair, lineCount: lines.length, chars, focused }),
+        options: JSON.stringify({ ...o, podcastMode: mode, voicePair: pair, lineCount: lines.length, chars, focused }),
       },
     });
   } catch (e) {
@@ -300,28 +188,16 @@ async function runGeneration(id: string) {
   if (!gen || gen.status !== "running") return;
   // 播客 / 自訂走獨立分支
   if (gen.type === "podcast" || gen.type === "custom") {
-    let options: Partial<GenOptions> = {};
-    try {
-      options = JSON.parse(gen.options || "{}") as Partial<GenOptions>;
-    } catch {
-      /* ignore */
-    }
+    const options = safeParseOptions(gen.options);
     if (gen.type === "podcast") await runPodcast(id, gen.noteId, { title: gen.note.title, rawText: gen.note.rawText }, options);
     else await runCustom(id, { title: gen.note.title, rawText: gen.note.rawText }, options);
     return;
   }
   try {
-    const options = JSON.parse(gen.options || "{}") as Partial<GenOptions>;
-    const o: GenOptions = {
-      count: options.count === "less" || options.count === "more" ? options.count : "standard",
-      difficulty:
-        options.difficulty === "easy" || options.difficulty === "hard" ? options.difficulty : "medium",
-      language: options.language === "zh-Hans" || options.language === "en" ? options.language : "zh-Hant",
-      focus: typeof options.focus === "string" ? options.focus : "",
-    };
+    const o = normalizeOptions(safeParseOptions(gen.options));
     // 數量：自訂優先，否則按筆記字數現算（心智圖不計數，用層級描述），並寫回 options 供歷史顯示
     const chars = gen.note.rawText.length;
-    const custom = typeof options.customCount === "number" ? Math.min(50, Math.max(1, Math.floor(options.customCount))) : undefined;
+    const custom = normalizeCustomCount(o.customCount);
     const n =
       gen.type === "mindmap"
         ? null
@@ -492,12 +368,7 @@ export const generationRouter = router({
     .mutation(async ({ input }) => {
       const gen = await db.generation.findUnique({ where: { id: input.id } });
       if (!gen || gen.type !== "quiz" || gen.status !== "done" || !gen.result) throw new Error("找不到這份測驗");
-      let options: GenOptions = {} as GenOptions;
-      try {
-        options = JSON.parse(gen.options || "{}") as GenOptions;
-      } catch {
-        /* ignore */
-      }
+      const options = normalizeOptions(safeParseOptions(gen.options));
       const cache = (options.explainCache && typeof options.explainCache === "object") ? options.explainCache : {};
       const key = String(input.qIndex);
       if (cache[key]) return { text: cache[key] };
