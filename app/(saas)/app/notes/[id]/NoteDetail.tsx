@@ -4,16 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CardIcon, PodIcon, QuizIcon, SparkIcon } from "@/app/icons";
-import { flashcardCount, quizCount } from "@/lib/counts";
-import { downloadText, flashcardsToMd, quizToMd, safeName } from "@/lib/export";
 import { splitParagraphs } from "@/lib/paras";
 import { trpc } from "@/lib/trpc";
-import { ChatBox } from "@/app/(saas)/app/chat/ChatBox";
+import { Flashcards } from "./FlashcardsView";
+import { Quiz } from "./QuizView";
+import { SourcesPanel } from "./SourcesPanel";
+import { StudioPanel } from "./StudioPanel";
 import { FloatingChat } from "./FloatingChat";
 import { MindmapView } from "./MindmapView";
 import { PodcastView } from "./PodcastView";
 import { CustomView } from "./CustomView";
-import { CustomSection } from "./CustomSection";
 import { BlindSpots } from "./BlindSpots";
 import { ConflictsCard } from "./ConflictsCard";
 import { PlanView } from "./PlanView";
@@ -32,191 +32,6 @@ const TABS = [
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
-
-function Flashcards({ result, title, genId }: { result: string; title: string; genId: string }) {
-  const cards = JSON.parse(result) as { front: string; back: string }[];
-  const [i, setI] = useState(0);
-  const [flip, setFlip] = useState(false);
-  const utils = trpc.useUtils();
-  const log = trpc.attempt.log.useMutation({ onSuccess: () => utils.attempt.stats.invalidate() });
-  if (cards.length === 0) return <p className="text-sm text-muted">空的。</p>;
-  const c = cards[Math.min(i, cards.length - 1)];
-  function grade(correct: boolean, confidence: "high" | "med" | "low") {
-    if (genId) log.mutate({ genId, qIndex: Math.min(i, cards.length - 1), correct, confidence });
-    setI((v) => Math.min(v + 1, cards.length - 1));
-    setFlip(false);
-  }
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center">
-        <button onClick={() => downloadText(`${safeName(title)}-閃卡.md`, flashcardsToMd(title, cards))} className="ml-auto rounded border border-line px-2 py-0.5 text-xs font-semibold text-muted hover:border-muted hover:text-ink">
-          匯出 MD
-        </button>
-      </div>
-      <div className="flip-scene">
-        <div className={`flip-inner ${flip ? "flipped" : ""}`} onClick={() => setFlip(!flip)}>
-          <div className="flip-face card flex min-h-44 cursor-pointer flex-col items-center justify-center p-6 text-center">
-            <div className="text-xs font-semibold text-muted">題面 {i + 1}/{cards.length} · 點我翻面</div>
-            <div className="mt-2 text-lg font-bold">{c.front}</div>
-          </div>
-          <div className="flip-face flip-back card flex min-h-44 cursor-pointer flex-col items-center justify-center bg-paper p-6 text-center">
-            <div className="text-xs font-semibold text-muted">答案 · 點我翻回</div>
-            <div className="mt-2">{c.back}</div>
-          </div>
-        </div>
-      </div>
-      <div className="flex items-center gap-2">
-        <button disabled={i === 0} onClick={() => { setI(i - 1); setFlip(false); }} className="btn-ghost !px-4 !py-1.5 text-sm">← 上張</button>
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-line">
-          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${((i + 1) / cards.length) * 100}%` }} />
-        </div>
-        <button disabled={i >= cards.length - 1} onClick={() => { setI(i + 1); setFlip(false); }} className="btn-ghost !px-4 !py-1.5 text-sm">下張 →</button>
-      </div>
-      {flip && (
-        <div className="flex items-center justify-center gap-2 text-xs">
-          <span className="text-muted">自評：</span>
-          <button onClick={() => grade(true, "high")} className="rounded border border-line px-3 py-1.5 font-semibold hover:border-muted">記得</button>
-          <button onClick={() => grade(true, "med")} className="rounded border border-line px-3 py-1.5 hover:border-muted">模糊</button>
-          <button onClick={() => grade(false, "low")} className="rounded border border-line px-3 py-1.5 hover:border-red-400 hover:text-red-600">忘了</button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function stripLabel(op: string): string {
-  return op.replace(/^[A-D][、．.。:：\s]*/, "");
-}
-
-function Quiz({ result, title, genId }: { result: string; title: string; genId: string }) {
-  const qs = JSON.parse(result) as { question: string; options: string[]; answer: number; explanation?: string }[];
-  const [picked, setPicked] = useState<Record<number, number>>({});
-  const [conf, setConf] = useState<Record<number, "high" | "med" | "low">>({});
-  const [explain, setExplain] = useState<Record<number, string>>({});
-  const [explainLoading, setExplainLoading] = useState<Set<number>>(new Set());
-  const utils = trpc.useUtils();
-  const log = trpc.attempt.log.useMutation({ onSuccess: () => utils.attempt.stats.invalidate() });
-  const explainMut = trpc.generation.explain.useMutation({
-    onSuccess: (data, vars) => {
-      setExplain((prev) => ({ ...prev, [vars.qIndex]: data.text }));
-      setExplainLoading((s) => { const n = new Set(s); n.delete(vars.qIndex); return n; });
-    },
-    onError: (e, vars) => {
-      setExplain((prev) => ({ ...prev, [vars.qIndex]: `解釋失敗：${e.message}` }));
-      setExplainLoading((s) => { const n = new Set(s); n.delete(vars.qIndex); return n; });
-    },
-  });
-  const done = Object.keys(picked).length === qs.length;
-  const score = qs.filter((q, qi) => picked[qi] === q.answer).length;
-  function pick(qi: number, oi: number, correct: boolean) {
-    if (genId) log.mutate({ genId, qIndex: qi, picked: oi, correct, confidence: conf[qi] ?? "med" });
-    setPicked((p) => (p[qi] !== undefined ? p : { ...p, [qi]: oi }));
-  }
-  function askExplain(qi: number) {
-    if (!genId || explain[qi] || explainLoading.has(qi)) return;
-    setExplainLoading((s) => new Set(s).add(qi));
-    explainMut.mutate({ id: genId, qIndex: qi });
-  }
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center">
-        <button onClick={() => downloadText(`${safeName(title)}-測驗.md`, quizToMd(title, qs))} className="ml-auto rounded border border-line px-2 py-0.5 text-xs font-semibold text-muted hover:border-muted hover:text-ink">
-          匯出 MD
-        </button>
-      </div>
-      {done && (
-        <div className="card rise border-accent bg-accent-soft p-4 text-center font-bold text-ink">
-          {score}/{qs.length} 分 {score === qs.length ? "全對！" : score >= qs.length / 2 ? "不錯，錯的再看一次" : "加油，再複習一下"}
-        </div>
-      )}
-      {qs.map((q, qi) => (
-        <div key={qi} className="card p-4">
-          <div className="text-sm font-bold">{qi + 1}. {q.question}</div>
-          <div className="mt-2 flex items-center gap-1 text-[11px]">
-            <span className="text-muted">信心：</span>
-            {([["high", "有把握"], ["med", "不確定"], ["low", "瞎猜"]] as const).map(([v, label]) => (
-              <button
-                key={v}
-                disabled={picked[qi] !== undefined}
-                onClick={() => setConf((c) => ({ ...c, [qi]: v }))}
-                className={`rounded border px-1.5 py-0.5 ${((conf[qi] ?? "med") === v) ? "invert-chip border-ink font-semibold" : "border-line text-muted hover:border-muted"} disabled:opacity-60`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          <div className="mt-2 flex flex-col gap-1.5">
-            {q.options.map((raw, oi) => {
-              const op = stripLabel(raw);
-              const sel = picked[qi] === oi;
-              const show = picked[qi] !== undefined;
-              const correct = oi === q.answer;
-              return (
-                <button
-                  key={oi}
-                  onClick={() => pick(qi, oi, oi === q.answer)}
-                  className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
-                    show && correct
-                      ? "border-accent bg-accent-soft font-semibold"
-                      : show && sel
-                        ? "border-red-400 bg-red-50"
-                        : "border-line bg-card hover:border-muted"
-                  }`}
-                >
-                  <span className="mr-2 font-mono font-bold text-muted">{"ABCD"[oi]}</span>
-                  {op}
-                </button>
-              );
-            })}
-          </div>
-          {picked[qi] !== undefined && q.explanation && (
-            <div className="mt-2 rounded-md bg-paper px-3 py-2 text-xs leading-relaxed text-muted">
-              <span className="font-bold text-ink">解析：</span>{q.explanation}
-            </div>
-          )}
-          {picked[qi] !== undefined && picked[qi] !== q.answer && (
-            <div className="mt-2">
-              <button
-                onClick={() => askExplain(qi)}
-                disabled={explainLoading.has(qi)}
-                className="rounded border border-accent bg-accent-soft px-2 py-1 text-xs font-semibold text-ink disabled:opacity-50"
-              >
-                {explainLoading.has(qi) ? "解釋中…" : explain[qi] ? "重新解釋" : "要解釋（三角度）"}
-              </button>
-              {explain[qi] && (
-                <div className="mt-2 whitespace-pre-wrap rounded-md border border-accent bg-accent-soft px-3 py-2 text-xs leading-relaxed">
-                  {explain[qi]}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      ))}
-      {done && (
-        <button onClick={() => setPicked({})} className="btn-ghost self-center text-sm">
-          再考一次
-        </button>
-      )}
-    </div>
-  );
-}
-
-function GenView({ result, type, sources, paras, title, genId, masteredInit, onSaved, onGenerate }: { result: string; type: string; sources: Record<string, string[]>; paras: { id: string; text: string }[]; title: string; genId: string; masteredInit: string[]; onSaved: () => void; onGenerate?: (type: "flashcards" | "quiz", focus: string) => void }) {
-  if (type === "mindmap") return <MindmapView result={result} sources={sources} paras={paras} onGenerate={onGenerate} title={title} genId={genId} masteredInit={masteredInit} onSaved={onSaved} />;
-  if (type === "podcast") return <PodcastView result={result} title={title} genId={genId} />;
-  if (type === "custom") return <CustomView result={result} title={title} paras={paras} />;
-  try {
-    const arr = JSON.parse(result) as Record<string, unknown>[];
-    if (arr.length > 0 && "options" in arr[0]) return <Quiz result={result} title={title} genId={genId} />;
-    return <Flashcards result={result} title={title} genId={genId} />;
-  } catch {
-    return <p className="whitespace-pre-wrap text-sm text-red-500">解析失敗，原文：{result.slice(0, 500)}</p>;
-  }
-}
-
-const TYPE_LABEL: Record<string, string> = { flashcards: "閃卡", quiz: "測驗", mindmap: "心智圖", podcast: "播客", custom: "自訂" };
-
-type DoneGen = { id: string; type: string; result: string | null; options: string; createdAt: Date };
 
 function DeleteNoteButton({ id }: { id: string }) {
   const router = useRouter();
@@ -257,89 +72,6 @@ function DeleteNoteButton({ id }: { id: string }) {
   );
 }
 
-function SourcesPanel({ noteId, title, rawText, onChanged }: { noteId: string; title: string; rawText: string; onChanged: () => void }) {
-  const paras = useMemo(() => splitParagraphs(rawText), [rawText]);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [adding, setAdding] = useState(false);
-  const [srcName, setSrcName] = useState("");
-  const [srcText, setSrcText] = useState("");
-  const [msg, setMsg] = useState("");
-  const appendSource = trpc.note.appendSource.useMutation();
-  const links = trpc.link.byPara.useQuery({ noteId, paraId: openId ?? "" }, { enabled: !!openId });
-  async function doAppend() {
-    if (!srcText.trim() || appendSource.isPending) return;
-    setMsg("");
-    try {
-      await appendSource.mutateAsync({ id: noteId, name: srcName.trim() || "補充來源", text: srcText });
-      setSrcName("");
-      setSrcText("");
-      setAdding(false);
-      onChanged();
-    } catch (e) {
-      setMsg(`追加失敗：${e instanceof Error ? e.message : "未知錯誤"}`);
-    }
-  }
-  return (
-    <div className="card flex max-h-[70vh] flex-col overflow-hidden">
-      <div className="flex items-center border-b border-line p-3">
-        <div>
-          <h2 className="text-sm font-bold">來源</h2>
-          <p className="mt-0.5 text-xs text-muted">
-            {paras.length} 段 · {rawText.length.toLocaleString()} 字
-          </p>
-        </div>
-        <button onClick={() => setAdding((v) => !v)} title="追加文字來源" className="ml-auto rounded border border-line px-2 py-0.5 text-xs font-semibold hover:border-muted">
-          ＋ 來源
-        </button>
-      </div>
-      {adding && (
-        <div className="flex flex-col gap-2 border-b border-line p-3">
-          <input value={srcName} onChange={(e) => setSrcName(e.target.value)} placeholder="來源名稱（可空，如：第3章講義）" className="field text-xs" />
-          <textarea value={srcText} onChange={(e) => setSrcText(e.target.value)} rows={4} placeholder="貼上來源文字…" className="field resize-y text-xs" />
-          {msg && <p className="text-xs text-red-500">{msg}</p>}
-          <div className="flex gap-2">
-            <button onClick={doAppend} disabled={appendSource.isPending || !srcText.trim()} className="btn-primary !px-3 !py-1 text-xs disabled:opacity-50">
-              {appendSource.isPending ? "追加中…" : "追加進來"}
-            </button>
-            <button onClick={() => setAdding(false)} className="text-xs text-muted hover:text-ink">
-              取消
-            </button>
-          </div>
-        </div>
-      )}
-      <div className="flex-1 overflow-y-auto p-2">
-        {paras.map((p) => {
-          const open = openId === p.id;
-          return (
-            <div key={p.id} className="rounded-md">
-              <button
-                onClick={() => setOpenId(open ? null : p.id)}
-                className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-paper ${open ? "bg-paper" : ""}`}
-              >
-                <span className="mt-0.5 shrink-0 font-mono font-bold text-muted">[{p.id}]</span>
-                <span className="leading-relaxed">{open ? p.text : p.text.length > 60 ? p.text.slice(0, 60) + "…" : p.text}</span>
-              </button>
-              {open && (links.data?.length ?? 0) > 0 && (
-                <div className="mt-1.5 flex flex-wrap gap-1.5 px-2">
-                  <span className="text-[10px] font-semibold text-muted">被引用：</span>
-                  {links.data!.map((l) => (
-                    <span key={l.id} className="rounded bg-paper px-1.5 py-0.5 text-[10px] font-mono text-muted">
-                      {l.kind === "chat" ? "對話" : l.kind === "mindmap" ? "心智圖" : l.kind === "podcast" ? "播客" : l.kind === "custom" ? "自訂" : l.kind}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <div className="border-t border-line p-3">
-        <ExportNoteButton title={title} rawText={rawText} />
-      </div>
-    </div>
-  );
-}
-
 // ===== Tab 式筆記詳情頁 =====
 
 export function NoteDetail({ id }: { id: string }) {
@@ -349,13 +81,6 @@ export function NoteDetail({ id }: { id: string }) {
   const [liveType, setLiveType] = useState("flashcards");
   const [tab, setTab] = useState<TabKey>("note");
   const [selectedGenId, setSelectedGenId] = useState<string | null>(null);
-  const [count, setCount] = useState<"less" | "standard" | "more">("standard");
-  const [level, setLevel] = useState<"easy" | "medium" | "hard">("medium");
-  const [lang, setLang] = useState<"zh-Hant" | "zh-Hans" | "en">("zh-Hant");
-  const [focus, setFocus] = useState("");
-  const [custom, setCustom] = useState("");
-  const [podMode, setPodMode] = useState<"read" | "dialogue">("read");
-  const [podPair, setPodPair] = useState<"cn" | "tw">("cn");
   const [sourcesOpen, setSourcesOpen] = useState(true);
   const [studioOpen, setStudioOpen] = useState(true);
 
@@ -377,45 +102,36 @@ export function NoteDetail({ id }: { id: string }) {
     }
   }, [poll.data?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function gen(type: "flashcards" | "quiz" | "mindmap" | "podcast" | "custom", focusOverride?: string, pod?: { mode: "read" | "dialogue"; pair: "cn" | "tw" }) {
-    const n = parseInt(custom, 10);
+  async function gen(args: {
+    type: "flashcards" | "quiz" | "mindmap" | "podcast" | "custom";
+    count: "less" | "standard" | "more";
+    level: "easy" | "medium" | "hard";
+    lang: "zh-Hant" | "zh-Hans" | "en";
+    focus?: string;
+    customCount?: number;
+    pod?: { mode: "read" | "dialogue"; pair: "cn" | "tw" };
+  }) {
     const res = await start.mutateAsync({
       noteId: id,
-      type,
-      count,
-      difficulty: level,
-      language: lang,
-      focus: focusOverride ?? focus,
-      ...(Number.isFinite(n) && n >= 1 ? { customCount: Math.min(50, n) } : {}),
-      ...(type === "podcast" ? { podcastMode: pod?.mode ?? "read", voicePair: pod?.pair ?? "cn" } : {}),
+      type: args.type,
+      count: args.count,
+      difficulty: args.level,
+      language: args.lang,
+      focus: args.focus ?? "",
+      ...(args.customCount ? { customCount: args.customCount } : {}),
+      ...(args.type === "podcast" ? { podcastMode: args.pod?.mode ?? "read", voicePair: args.pod?.pair ?? "cn" } : {}),
     });
-    setLiveType(type);
+    setLiveType(args.type);
     setPollId(res.id);
   }
 
-  function Seg<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { v: T; label: string }[] }) {
-    return (
-      <div className="inline-flex overflow-hidden rounded-md border border-line">
-        {options.map((o, i) => (
-          <button
-            key={o.v}
-            onClick={() => onChange(o.v)}
-            className={`px-2.5 py-1.5 text-xs font-medium transition-colors ${i > 0 ? "border-l border-line" : ""} ${value === o.v ? "invert-chip" : "bg-card hover:bg-paper"}`}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-    );
+  /** 焦點重生縫：沿用標準預設值，給盲點 / 心智圖 / 衝突卡用。 */
+  function regen(type: "flashcards" | "quiz", focus: string) {
+    return gen({ type, count: "standard", level: "medium", lang: "zh-Hant", focus });
   }
-
-  const chars = note.data?.rawText.length ?? 0;
-  const customN = (() => {
-    const n = parseInt(custom, 10);
-    return Number.isFinite(n) && n >= 1 ? Math.min(50, n) : null;
-  })();
-  const fcPreview = customN ?? flashcardCount(chars, count);
-  const quizPreview = customN ?? quizCount(chars, count);
+  function regenQuiz(focus: string) {
+    return regen("quiz", focus);
+  }
   const parasList = useMemo(() => (note.data ? splitParagraphs(note.data.rawText) : []), [note.data]);
   const parasMap = useMemo(() => new Map(parasList.map((p) => [p.id.replace(/^p/, ""), p.text])), [parasList]);
 
@@ -547,7 +263,7 @@ export function NoteDetail({ id }: { id: string }) {
                   {note.data.rawText}
                 </div>
               </div>
-              {!busy && <BlindSpots noteId={id} onRegen={(f) => gen("quiz", f)} />}
+              {!busy && <BlindSpots noteId={id} onRegen={(f) => regen("quiz", f)} />}
             </div>
           )}
 
@@ -555,8 +271,8 @@ export function NoteDetail({ id }: { id: string }) {
             activeGen?.type === "mindmap" && activeGen.result ? (
               <div className="flex flex-col gap-3">
                 <GenSelector gens={doneGens.filter((g) => g.type === "mindmap")} selected={selectedGenId} onSelect={setSelectedGenId} latest={latestByType.get("mindmap")?.id ?? null} />
-                <MindmapView result={activeGen.result} sources={readSourceMap(activeGen.options)} paras={parasList} onGenerate={(t, f) => gen(t, f)} title={noteTitle} genId={activeGen.id} masteredInit={readMastered(activeGen.options)} onSaved={() => note.refetch()} />
-                <ConflictsCard genId={activeGen.id} conflicts={readConflicts(activeGen.options)} onRegen={(f) => gen("quiz", f)} />
+                <MindmapView result={activeGen.result} sources={readSourceMap(activeGen.options)} paras={parasList} onGenerate={regen} title={noteTitle} genId={activeGen.id} masteredInit={readMastered(activeGen.options)} onSaved={() => note.refetch()} />
+                <ConflictsCard genId={activeGen.id} conflicts={readConflicts(activeGen.options)} onRegen={regenQuiz} />
               </div>
             ) : (
               <EmptyState icon={<SparkIcon size={28} />} text="還沒生成心智圖，右邊 Studio 開一發。" />
@@ -568,7 +284,7 @@ export function NoteDetail({ id }: { id: string }) {
               <div className="flex flex-col gap-3">
                 <GenSelector gens={doneGens.filter((g) => g.type === "quiz")} selected={selectedGenId} onSelect={setSelectedGenId} latest={latestByType.get("quiz")?.id ?? null} />
                 <Quiz result={activeGen.result} title={noteTitle} genId={activeGen.id} />
-                <ConflictsCard genId={activeGen.id} conflicts={readConflicts(activeGen.options)} onRegen={(f) => gen("quiz", f)} />
+                <ConflictsCard genId={activeGen.id} conflicts={readConflicts(activeGen.options)} onRegen={regenQuiz} />
               </div>
             ) : (
               <EmptyState icon={<QuizIcon size={28} />} text="還沒生成測驗，右邊 Studio 開一發。" />
@@ -626,69 +342,20 @@ export function NoteDetail({ id }: { id: string }) {
           >
             {studioOpen ? "▶ Studio" : "◀"}
           </button>
-          {studioOpen && (
-            <div className="card rise flex flex-col gap-3 p-4">
-              <h2 className="text-sm font-bold">Studio</h2>
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-muted">數量</span>
-                <Seg value={count} onChange={setCount} options={[{ v: "less", label: "更少" }, { v: "standard", label: "標準" }, { v: "more", label: "更多" }]} />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-muted">難度</span>
-                <Seg value={level} onChange={setLevel} options={[{ v: "easy", label: "簡單" }, { v: "medium", label: "中等" }, { v: "hard", label: "困難" }]} />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-semibold text-muted">語言</span>
-                  <select value={lang} onChange={(e) => setLang(e.target.value as typeof lang)} className="field !w-auto text-xs">
-                    <option value="zh-Hant">繁體中文</option>
-                    <option value="zh-Hans">简体中文</option>
-                    <option value="en">English</option>
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-semibold text-muted">自訂題數</span>
-                  <input value={custom} onChange={(e) => setCustom(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" placeholder="空=公式" className="field text-xs" />
-                </div>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <span className="text-xs font-semibold text-muted">主題聚焦（可空）</span>
-                <textarea value={focus} onChange={(e) => setFocus(e.target.value)} rows={2} placeholder="例如：只考監護與輔助宣告" className="field resize-y text-xs" />
-              </div>
-              <div className="flex flex-col gap-2">
-                <button onClick={() => gen("flashcards")} disabled={start.isPending || !!busy} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
-                  <CardIcon size={16} /> 生成閃卡{chars ? `（${fcPreview} 張）` : ""}
-                </button>
-                <button onClick={() => gen("quiz")} disabled={start.isPending || !!busy} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
-                  <QuizIcon size={16} /> 生成測驗{chars ? `（${quizPreview} 題）` : ""}
-                </button>
-                <button onClick={() => gen("mindmap")} disabled={start.isPending || !!busy} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
-                  <SparkIcon size={16} /> 生成心智圖
-                </button>
-              </div>
-              <div className="flex flex-col gap-1.5 border-t border-line pt-3">
-                <span className="text-xs font-semibold text-muted">播客</span>
-                <Seg value={podMode} onChange={setPodMode} options={[{ v: "read", label: "朗讀" }, { v: "dialogue", label: "對談" }]} />
-                <Seg value={podPair} onChange={setPodPair} options={[{ v: "cn", label: "大陸腔" }, { v: "tw", label: "台灣腔" }]} />
-                <button onClick={() => gen("podcast", undefined, { mode: podMode, pair: podPair })} disabled={start.isPending || !!busy} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
-                  <PodIcon size={16} /> 生成播客
-                </button>
-              </div>
-              {note.data && (
-                <CustomSection
-                  noteId={id}
-                  focus={focus}
-                  count={count}
-                  level={level}
-                  lang={lang}
-                  rawText={note.data.rawText}
-                  busy={!!busy}
-                  onStart={(gid) => {
-                    setLiveType("custom");
-                    setPollId(gid);
-                  }}
-                />
-              )}
+          {studioOpen && note.data && (
+            <div className="rise">
+              <StudioPanel
+                noteId={id}
+                rawText={note.data.rawText}
+                chars={note.data.rawText.length}
+                busy={!!busy}
+                starting={start.isPending}
+                onGenerate={gen}
+                onCustomStart={(gid) => {
+                  setLiveType("custom");
+                  setPollId(gid);
+                }}
+              />
             </div>
           )}
         </div>
@@ -716,16 +383,5 @@ function GenSelector({ gens, selected, onSelect, latest }: { gens: Gen[]; select
         ))}
       </select>
     </div>
-  );
-}
-
-function ExportNoteButton({ title, rawText }: { title: string; rawText: string }) {
-  return (
-    <button
-      onClick={() => downloadText(`${safeName(title)}-筆記.md`, `# ${title}\n\n${rawText}`)}
-      className="rounded border border-line px-2.5 py-1 text-xs font-semibold text-muted hover:border-muted hover:text-ink"
-    >
-      匯出筆記 MD
-    </button>
   );
 }
