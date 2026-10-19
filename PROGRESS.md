@@ -1,13 +1,17 @@
-# PROGRESS — 壓縮接續點（2026-10-18 晚，HEAD `bdc7e0b`）
+# PROGRESS — 壓縮接續點（2026-10-19 晚，HEAD `65d3765`）
 
-> 用途：把這段長對話壓掉後，從這一份直接接手。讀完這份 + `BATCH1.md`（規格鎖定版）即可開工。
-> 工作區：`A:\HSHSA`，分支 `main`，乾淨（`git status --short` 無輸出），已 push（`5afb2eb..bdc7e0b main->main`）。
+> 用途：把這段長對話壓掉後，從這一份直接接手。讀完這份 + `BATCH1.md`（規格鎖定版）+ `BATCH23.md`（施工紀錄）即可開工。
+> 工作區：`A:\HSHSA`，分支 `main`，乾淨（`git status --short` 無輸出），已 push（`7cfec00..65d3765 main->main`）。
 
 ## 1. 現在是什麼狀態
 
 - **Batch1 第一批閉環已交付並 push**：A1 複習頁原地作答 + B1 學習計畫融合 + A2 排程持久化 + D2 無障礙空狀態。
 - 驗證全綠：**vitest 95/95（9 files），`npx tsc --noEmit` EXIT 0，`npm run build` EXIT 0**。
-- 對應 goal `goal-b9241da1` 已 `complete`（rev 4）。下一批還沒開 goal、還沒開工。
+- 對應 goal `goal-b9241da1` 已 `complete`（rev 4）。
+- **Batch2+Batch3 已交付並 commit `65d3765`**：C1 podcast 失敗同參重試 + A3 弱項一鍵 quiz + C2 備份還原（STORE-only unzip + 還原前自動留底）+ B2 Quiz/Flashcards 列印 CSS + D1 Tailwind `!x`→`x!` codemod（53 處/17 檔）。
+- 驗證全綠：**vitest 105/105（11 files），`npx tsc --noEmit` EXIT 0，`next build` EXIT 0**。
+- 對應 goal `goal-489be985` rev 1 active —— 程式碼已 commit，剩本文件更新 + push 即 complete。
+- 施工紀錄見 `BATCH23.md`。
 - 最近一次對話：用戶說「D2 剩下的活我來收尾」，抱怨工具 status 訊息洗版（「何意味？重複大法？」）—— 經查是 UI/status 噪音，無循環調用；D2 已由我方顺手收完並驗證，用戶可直接目檢。
 
 ## 2. 本次做完的東西（按模組）
@@ -60,14 +64,13 @@
 6. D2 aria：Quiz 選項是按鈕組不是 radio（`role="list"`）；自評信心組用 `role="group"`；空 quiz 的 `done` 必須先判 `length>0`。
 7. AGENTS.md：`next dev` 會重加 block，commit 帶上保持乾淨。Hindsight memory 401 無 token——靠讀碼，別指望。
 
-## 5. 還沒做的事（下一批候選，未開工、未承諾順序）
+## 5. 還沒做的事（候選，未開工、未承諾順序）
 
-- **Batch2**：C1 podcast 韌性（重試/斷點續傳？當初只說增強）、A3 弱項→quiz（錯題再練）。
-- **Batch3**：C2 備份還原（restore + **pre-restore auto-backup guard**，BATCH1.md 已定）、B2 匯出/列印、D1 Tailwind `!x`→`x!` 語法遷移。
+- Batch2 + Batch3 已做完（見 §1 與 `BATCH23.md`）。下一批由用戶指示。
 - 不做：pgvector、多用戶、自建 TTS Phase2、換 DB。
 
 ## 6. 接手第一步（壓縮後照做）
 
-1. `git pull --rebase`（或確認 HEAD 仍是 `bdc7e0b`），`git status --short` 應乾淨。
-2. `npx vitest run`（期望 9 files / 95 tests 綠）+ `npx tsc --noEmit`。
-3. 讀 `BATCH1.md`（規格）+ 本文件 §2–§4（實作現況），然後按用戶指示開下一批。
+1. `git pull --rebase`（或確認 HEAD 仍是 `65d3765`），`git status --short` 應乾淨。
+2. `npx vitest run`（期望 11 files / 105 tests 綠）+ `npx tsc --noEmit`。
+3. 讀 `BATCH1.md`（規格）+ 本文件 §2–§4（實作現況）+ `BATCH23.md`（Batch2/3 施工紀錄），然後按用戶指示開下一批。
