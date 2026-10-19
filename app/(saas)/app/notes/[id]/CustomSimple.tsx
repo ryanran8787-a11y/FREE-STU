@@ -42,7 +42,7 @@ export function CustomSimple({ running, fire }: { running: boolean; fire: Custom
       <button
         onClick={() => fire({ customKind: "simple", customMethod: method, customLength: length, customHintFirst: hintFirst })}
         disabled={running}
-        className="btn-ghost w-full !justify-start text-sm disabled:opacity-50"
+        className="btn-ghost w-full justify-start! text-sm disabled:opacity-50"
       >
         生成自訂
       </button>

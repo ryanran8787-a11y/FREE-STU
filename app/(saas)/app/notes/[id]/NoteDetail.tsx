@@ -75,7 +75,7 @@ function DeleteNoteButton({ id }: { id: string }) {
 
 // ===== Tab 式筆記詳情頁 =====
 
-export function NoteDetail({ id }: { id: string }) {
+export function NoteDetail({ id, initialGenId }: { id: string; initialGenId?: string | null }) {
   const note = trpc.note.get.useQuery({ id });
   const start = trpc.generation.start.useMutation();
   const [pollId, setPollId] = useState<string | null>(null);
@@ -84,6 +84,23 @@ export function NoteDetail({ id }: { id: string }) {
   const [selectedGenId, setSelectedGenId] = useState<string | null>(null);
   const [sourcesOpen, setSourcesOpen] = useState(true);
   const [studioOpen, setStudioOpen] = useState(true);
+  // A3：弱點頁一鍵出題跳過來（?gen=）→直接掛上 polling，不回 Studio。
+  useEffect(() => {
+    if (initialGenId) {
+      setLiveType("quiz");
+      setPollId(initialGenId);
+    }
+  }, [initialGenId]);
+  // C1：記住上一次 podcast 生成的完整參數，失敗重試沿用同參（不回 Studio 重選）。
+  const [lastPodArgs, setLastPodArgs] = useState<{
+    type: "flashcards" | "quiz" | "mindmap" | "podcast" | "custom";
+    count: "less" | "standard" | "more";
+    level: "easy" | "medium" | "hard";
+    lang: "zh-Hant" | "zh-Hans" | "en";
+    focus?: string;
+    customCount?: number;
+    pod?: { mode: "read" | "dialogue"; pair: "cn" | "tw" };
+  } | null>(null);
 
   const poll = trpc.generation.getStatus.useQuery(
     { id: pollId ?? "" },
@@ -123,6 +140,7 @@ export function NoteDetail({ id }: { id: string }) {
       ...(args.type === "podcast" ? { podcastMode: args.pod?.mode ?? "read", voicePair: args.pod?.pair ?? "cn" } : {}),
     });
     setLiveType(args.type);
+    if (args.type === "podcast") setLastPodArgs(args);
     setPollId(res.id);
   }
 
@@ -236,7 +254,18 @@ export function NoteDetail({ id }: { id: string }) {
         </div>
       )}
       {poll.data?.status === "error" && (
-        <div className="card border-l-4 !border-l-red-400 p-4 text-sm rise">失敗：{poll.data.error}</div>
+        <div className="card flex flex-wrap items-center gap-2 border-l-4 border-l-red-400 p-4 text-sm rise">
+          <span className="min-w-0 flex-1">失敗：{poll.data.error}</span>
+          {lastPodArgs && liveType === "podcast" && (
+            <button
+              onClick={() => gen(lastPodArgs)}
+              disabled={start.isPending}
+              className="btn-primary shrink-0 text-xs disabled:opacity-50"
+            >
+              {start.isPending ? "重試中…" : "用相同設定重試"}
+            </button>
+          )}
+        </div>
       )}
 
       {/* 主內容區：左來源（可折疊）+ 中 tab 內容 + 右 Studio（可折疊） */}
@@ -377,7 +406,7 @@ function GenSelector({ gens, selected, onSelect, latest }: { gens: Gen[]; select
       <select
         value={selected ?? latest ?? ""}
         onChange={(e) => onSelect(e.target.value)}
-        className="field !w-auto text-xs"
+        className="field w-auto! text-xs"
       >
         {gens.map((g, i) => (
           <option key={g.id} value={g.id}>

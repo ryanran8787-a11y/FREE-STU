@@ -167,6 +167,11 @@ export default function SettingsPage() {
   const [sysMsg, setSysMsg] = useState("");
   const [backing, setBacking] = useState(false);
   const [backupMsg, setBackupMsg] = useState("");
+  // C2 還原：兩段確認（選檔 → 輸入「還原」二字 → 上傳），避免手滑。
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreConfirm, setRestoreConfirm] = useState("");
+  const [restoring, setRestoring] = useState(false);
+  const [restoreMsg, setRestoreMsg] = useState("");
 
   async function downloadBackup() {
     if (backing) return;
@@ -195,6 +200,30 @@ export default function SettingsPage() {
       setBackupMsg(`備份失敗：${e instanceof Error ? e.message : "未知錯誤"}`);
     } finally {
       setBacking(false);
+    }
+  }
+
+  async function uploadRestore() {
+    if (restoring || !restoreFile) return;
+    if (restoreConfirm.trim() !== "還原") {
+      setRestoreMsg("請在確認框輸入「還原」二字才會執行。");
+      return;
+    }
+    setRestoring(true);
+    setRestoreMsg("");
+    try {
+      const form = new FormData();
+      form.append("file", restoreFile);
+      const res = await fetch("/api/backup", { method: "POST", body: form });
+      const json = (await res.json().catch(() => ({}))) as { error?: string; restoredFiles?: number; podcastCount?: number; autoBackup?: string };
+      if (!res.ok) throw new Error(json.error ?? `HTTP ${res.status}`);
+      setRestoreMsg(`還原完成：${json.restoredFiles} 個檔案、${json.podcastCount} 個音檔。還原前自動留底：${json.autoBackup}。建議重新整理頁面。`);
+      setRestoreFile(null);
+      setRestoreConfirm("");
+    } catch (e) {
+      setRestoreMsg(`還原失敗：${e instanceof Error ? e.message : "未知錯誤"}`);
+    } finally {
+      setRestoring(false);
     }
   }
 
@@ -237,7 +266,7 @@ export default function SettingsPage() {
         <p className="mt-1 text-sm text-muted">貼你自己的 API Key，模型費用走你自己的帳號，本站不經手。</p>
       </div>
 
-      <div className={`card flex items-center gap-3 border-l-4 p-4 text-sm ${status.data?.hasKey ? "!border-l-primary" : "!border-l-sun"}`}>
+      <div className={`card flex items-center gap-3 border-l-4 p-4 text-sm ${status.data?.hasKey ? "border-l-primary!" : "border-l-sun!"}`}>
         <span className={`inline-block h-2.5 w-2.5 rounded-full ${status.data?.hasKey ? "bg-primary" : "bg-sun"}`} />
         {status.isLoading
           ? "讀取中…"
@@ -260,7 +289,7 @@ export default function SettingsPage() {
                     setBaseUrl(p.baseUrl);
                     setModel(p.model);
                   }}
-                  className={`card p-3 text-left transition-all hover:shadow-md ${selected ? "!border-primary ring-2 ring-primary/20" : ""}`}
+                  className={`card p-3 text-left transition-all hover:shadow-md ${selected ? "border-primary! ring-2 ring-primary/20" : ""}`}
                 >
                   <div className="flex items-center gap-2 font-bold text-sm">
                     {selected && <span className="inline-block h-2 w-2 rounded-full bg-primary" />}
@@ -342,7 +371,7 @@ export default function SettingsPage() {
                   setVBaseUrl(preset.baseUrl);
                   setVModel(preset.model);
                 }}
-                className={`rounded border px-3 py-1 text-sm ${vProvider === preset.label ? "!border-primary font-bold" : ""}`}
+                className={`rounded border px-3 py-1 text-sm ${vProvider === preset.label ? "border-primary! font-bold" : ""}`}
               >
                 {name}
               </button>
@@ -450,6 +479,45 @@ export default function SettingsPage() {
           {backing ? "打包中…" : "⬇ 下載備份 zip"}
         </button>
         {backupMsg && <p className="text-sm">{backupMsg}</p>}
+      </div>
+
+      {/* 從備份還原（C2）：上傳 zip → 輸入「還原」確認 → 伺服器先自動留底再覆寫 */}
+      <div className="card flex flex-col gap-3 p-4 md:p-5">
+        <h2 className="font-extrabold">從備份還原</h2>
+        <p className="text-sm text-muted">
+          上傳之前下載的備份 zip。還原會<strong>覆寫目前全部資料</strong>，執行前伺服器會自動把現況留底一份
+         （data/backups/pre-restore-*.zip），但還是建議先手動下載一次備份再還原。
+        </p>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-semibold">選擇備份 zip</span>
+          <input
+            type="file"
+            accept=".zip"
+            onChange={(e) => {
+              setRestoreFile(e.target.files?.[0] ?? null);
+              setRestoreMsg("");
+            }}
+            className="text-sm"
+          />
+          {restoreFile && <span className="text-xs text-muted">已選：{restoreFile.name}（{(restoreFile.size / 1024 / 1024).toFixed(1)} MB）</span>}
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-semibold">輸入「還原」二字確認覆寫</span>
+          <input
+            value={restoreConfirm}
+            onChange={(e) => setRestoreConfirm(e.target.value)}
+            placeholder="還原"
+            className="field max-w-40"
+          />
+        </label>
+        <button
+          onClick={uploadRestore}
+          disabled={restoring || !restoreFile || restoreConfirm.trim() !== "還原"}
+          className="self-start rounded border border-red-400 px-4 py-2 text-sm font-bold text-red-400 disabled:opacity-40"
+        >
+          {restoring ? "還原中…" : "⚠ 執行還原（覆寫現有資料）"}
+        </button>
+        {restoreMsg && <p className="text-sm">{restoreMsg}</p>}
       </div>
 
       <PhoneConnect />

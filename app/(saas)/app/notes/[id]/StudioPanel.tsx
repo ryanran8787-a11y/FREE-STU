@@ -80,7 +80,7 @@ export function StudioPanel({
       <div className="grid grid-cols-2 gap-2">
         <div className="flex flex-col gap-1.5">
           <span className="text-xs font-semibold text-muted">語言</span>
-          <select value={lang} onChange={(e) => setLang(e.target.value as typeof lang)} className="field !w-auto text-xs">
+          <select value={lang} onChange={(e) => setLang(e.target.value as typeof lang)} className="field w-auto! text-xs">
             <option value="zh-Hant">繁體中文</option>
             <option value="zh-Hans">简体中文</option>
             <option value="en">English</option>
@@ -96,13 +96,13 @@ export function StudioPanel({
         <textarea value={focus} onChange={(e) => setFocus(e.target.value)} rows={2} placeholder="例如：只考監護與輔助宣告" className="field resize-y text-xs" />
       </div>
       <div className="flex flex-col gap-2">
-        <button onClick={() => onGenerate({ type: "flashcards", count, level, lang, focus, customCount })} disabled={disabled} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
+        <button onClick={() => onGenerate({ type: "flashcards", count, level, lang, focus, customCount })} disabled={disabled} className="btn-ghost w-full justify-start! text-sm disabled:opacity-50">
           <CardIcon size={16} /> 生成閃卡{chars ? `（${fcPreview} 張）` : ""}
         </button>
-        <button onClick={() => onGenerate({ type: "quiz", count, level, lang, focus, customCount })} disabled={disabled} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
+        <button onClick={() => onGenerate({ type: "quiz", count, level, lang, focus, customCount })} disabled={disabled} className="btn-ghost w-full justify-start! text-sm disabled:opacity-50">
           <QuizIcon size={16} /> 生成測驗{chars ? `（${quizPreview} 題）` : ""}
         </button>
-        <button onClick={() => onGenerate({ type: "mindmap", count, level, lang, focus, customCount })} disabled={disabled} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
+        <button onClick={() => onGenerate({ type: "mindmap", count, level, lang, focus, customCount })} disabled={disabled} className="btn-ghost w-full justify-start! text-sm disabled:opacity-50">
           <SparkIcon size={16} /> 生成心智圖
         </button>
       </div>
@@ -110,7 +110,7 @@ export function StudioPanel({
         <span className="text-xs font-semibold text-muted">播客</span>
         <Seg value={podMode} onChange={setPodMode} options={[{ v: "read", label: "朗讀" }, { v: "dialogue", label: "對談" }]} />
         <Seg value={podPair} onChange={setPodPair} options={[{ v: "cn", label: "大陸腔" }, { v: "tw", label: "台灣腔" }]} />
-        <button onClick={() => onGenerate({ type: "podcast", count, level, lang, focus: undefined, pod: { mode: podMode, pair: podPair } })} disabled={disabled} className="btn-ghost w-full !justify-start text-sm disabled:opacity-50">
+        <button onClick={() => onGenerate({ type: "podcast", count, level, lang, focus: undefined, pod: { mode: podMode, pair: podPair } })} disabled={disabled} className="btn-ghost w-full justify-start! text-sm disabled:opacity-50">
           <PodIcon size={16} /> 生成播客
         </button>
       </div>

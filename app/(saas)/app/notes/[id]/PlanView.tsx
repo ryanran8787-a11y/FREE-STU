@@ -48,20 +48,20 @@ export function PlanView({ noteId, title }: { noteId: string; title: string }) {
         <h2 className="text-sm font-bold">生成學習計畫</h2>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-semibold text-muted">天數</span>
-          <input type="number" min={1} max={30} value={days} onChange={(e) => setDays(Math.min(30, Math.max(1, parseInt(e.target.value, 10) || 1)))} className="field !w-16 text-xs" />
+          <input type="number" min={1} max={30} value={days} onChange={(e) => setDays(Math.min(30, Math.max(1, parseInt(e.target.value, 10) || 1)))} className="field w-16! text-xs" />
           <span className="font-semibold text-muted">難度</span>
-          <select value={level} onChange={(e) => setLevel(e.target.value as typeof level)} className="field !w-auto text-xs">
+          <select value={level} onChange={(e) => setLevel(e.target.value as typeof level)} className="field w-auto! text-xs">
             <option value="easy">簡單</option>
             <option value="medium">中等</option>
             <option value="hard">困難</option>
           </select>
           <span className="font-semibold text-muted">語言</span>
-          <select value={lang} onChange={(e) => setLang(e.target.value as typeof lang)} className="field !w-auto text-xs">
+          <select value={lang} onChange={(e) => setLang(e.target.value as typeof lang)} className="field w-auto! text-xs">
             <option value="zh-Hant">繁體中文</option>
             <option value="zh-Hans">简体中文</option>
             <option value="en">English</option>
           </select>
-          <button onClick={generate} disabled={start.isPending || busy} className="btn-primary ml-auto !px-4 !py-1.5 text-xs disabled:opacity-50">
+          <button onClick={generate} disabled={start.isPending || busy} className="btn-primary ml-auto px-4! py-1.5! text-xs disabled:opacity-50">
             {busy ? "生成中…" : "生成計畫"}
           </button>
         </div>
@@ -71,7 +71,7 @@ export function PlanView({ noteId, title }: { noteId: string; title: string }) {
       {plans.length > 0 && (
         <div className="flex flex-col gap-3">
           {plans.length > 1 && (
-            <select value={active?.id ?? ""} onChange={(e) => setSelectedPlan(e.target.value)} className="field !w-auto self-start text-xs">
+            <select value={active?.id ?? ""} onChange={(e) => setSelectedPlan(e.target.value)} className="field w-auto! self-start text-xs">
               {plans.map((p) => (
                 <option key={p.id} value={p.id}>
                   {new Date(p.createdAt).toLocaleDateString("zh-TW", { month: "numeric", day: "numeric", hour: "numeric", minute: "2-digit" })} · {p.days} 天
@@ -85,7 +85,7 @@ export function PlanView({ noteId, title }: { noteId: string; title: string }) {
               計畫生成中…
             </div>
           ) : active?.status === "error" ? (
-            <div className="card border-l-4 !border-l-red-400 p-4 text-sm">失敗：{active.error}</div>
+            <div className="card border-l-4 border-l-red-400! p-4 text-sm">失敗：{active.error}</div>
           ) : parsed ? (
             <div className="flex flex-col gap-3">
               {parsed.map((d) => (

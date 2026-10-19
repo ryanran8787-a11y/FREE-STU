@@ -127,7 +127,7 @@ export function ChatBox({
             <p className="text-sm">還沒開始聊，試試下面這些：</p>
             <div className="flex flex-wrap justify-center gap-2">
               {SUGGESTIONS.map((s) => (
-                <button key={s} onClick={() => send(s)} className="btn-ghost !px-3 !py-1.5 text-xs">
+                <button key={s} onClick={() => send(s)} className="btn-ghost px-3! py-1.5! text-xs">
                   {s}
                 </button>
               ))}

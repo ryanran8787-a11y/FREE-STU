@@ -9,7 +9,7 @@ export function EmptyState({ icon, text, action }: { icon: ReactNode; text: stri
       <div className="text-ink/40">{icon}</div>
       <p className="text-sm">{text}</p>
       {action && (
-        <button onClick={action.onClick} className="btn-ghost !px-4 !py-1.5 text-xs">
+        <button onClick={action.onClick} className="btn-ghost px-4! py-1.5! text-xs">
           {action.label}
         </button>
       )}

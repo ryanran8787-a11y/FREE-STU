@@ -50,7 +50,7 @@ function NoteCard({ id, title, tags, createdAt, genCount, checked, onToggle, onD
   }
 
   return (
-    <div className={`card group flex items-start gap-2 p-4 transition-shadow hover:shadow-md ${checked ? "!border-primary" : ""}`}>
+    <div className={`card group flex items-start gap-2 p-4 transition-shadow hover:shadow-md ${checked ? "border-primary!" : ""}`}>
       <input
         type="checkbox"
         checked={checked}
@@ -293,7 +293,7 @@ export default function NotesPage() {
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="font-bold">貼文字</h2>
           <span className="text-xs text-muted">或</span>
-          <button onClick={() => fileRef.current?.click()} className="btn-ghost !px-3 !py-1.5 text-xs">
+          <button onClick={() => fileRef.current?.click()} className="btn-ghost px-3! py-1.5! text-xs">
             <UploadIcon size={14} /> 上傳 .txt / .md / .docx / .pdf
           </button>
           <input ref={fileRef} type="file" accept=".txt,.md,.markdown,.docx,.pdf" onChange={upload} className="hidden" />
@@ -320,7 +320,7 @@ export default function NotesPage() {
       {checked.size >= 2 && (
         <div className="card rise flex items-center gap-3 border-primary bg-primary-soft p-3 text-sm">
           <span>已選 <b>{checked.size}</b> 份筆記</span>
-          <button onClick={merge} disabled={merging} className="btn-primary ml-auto !px-4 !py-1.5 text-xs disabled:opacity-50">
+          <button onClick={merge} disabled={merging} className="btn-primary ml-auto px-4! py-1.5! text-xs disabled:opacity-50">
             {merging ? "合併中…" : "合併生成知識地圖"}
           </button>
           <button onClick={() => setChecked(new Set())} className="text-xs text-muted hover:text-ink">

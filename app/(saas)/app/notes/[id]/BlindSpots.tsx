@@ -8,7 +8,7 @@ export function BlindSpots({ noteId, onRegen }: { noteId: string; onRegen: (focu
   if (!stats.data || stats.data.total === 0) return null;
   const s = stats.data;
   return (
-    <div className="card rise border-l-4 !border-l-sun p-4">
+    <div className="card rise border-l-4 border-l-sun! p-4">
       <h2 className="flex items-center gap-2 text-sm font-bold">
         盲點分析
         <span className="text-xs font-normal text-muted">已記錄 {s.total} 次作答</span>

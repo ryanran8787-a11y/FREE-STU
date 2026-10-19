@@ -60,7 +60,7 @@ export function TagsEditor({ noteId, tags }: { noteId: string; tags: string }) {
         placeholder="逗號分隔，如：生物,考試"
         autoFocus
         disabled={busy}
-        className="field !w-44 !px-2 !py-0.5 text-xs"
+        className="field w-44! px-2! py-0.5! text-xs"
       />
       <button onClick={commit} disabled={busy} className="rounded border border-primary px-2 py-0.5 text-[10px] font-semibold text-primary-deep hover:bg-primary hover:text-white disabled:opacity-50">
         {busy ? "…" : "存"}

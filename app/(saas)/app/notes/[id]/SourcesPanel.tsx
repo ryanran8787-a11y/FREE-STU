@@ -58,7 +58,7 @@ export function SourcesPanel({ noteId, title, rawText, onChanged }: { noteId: st
           <textarea value={srcText} onChange={(e) => setSrcText(e.target.value)} rows={4} placeholder="貼上來源文字…" className="field resize-y text-xs" />
           {msg && <p className="text-xs text-red-500">{msg}</p>}
           <div className="flex gap-2">
-            <button onClick={doAppend} disabled={appendSource.isPending || !srcText.trim()} className="btn-primary !px-3 !py-1 text-xs disabled:opacity-50">
+            <button onClick={doAppend} disabled={appendSource.isPending || !srcText.trim()} className="btn-primary px-3! py-1! text-xs disabled:opacity-50">
               {appendSource.isPending ? "追加中…" : "追加進來"}
             </button>
             <button onClick={() => setAdding(false)} className="text-xs text-muted hover:text-ink">

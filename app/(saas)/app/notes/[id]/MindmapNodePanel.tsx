@@ -43,7 +43,7 @@ export function MindmapNodePanel({
                 if (e.key === "Escape") nodes.setRenaming(false);
               }}
               autoFocus
-              className="field !w-auto flex-1 text-sm"
+              className="field w-auto! flex-1 text-sm"
             />
             <button onClick={nodes.doRename} className="rounded border border-line px-2.5 py-1 text-xs font-semibold hover:border-muted">確定</button>
             <button onClick={() => nodes.setRenaming(false)} className="rounded border border-line px-2.5 py-1 text-xs text-muted hover:border-muted">取消</button>
@@ -105,10 +105,10 @@ export function MindmapNodePanel({
       {nodes.saveMsg && <p className="mt-2 text-xs text-muted">{nodes.saveMsg}</p>}
       {onGenerate && (
         <div className="mt-3 flex gap-2">
-          <button onClick={() => onGenerate("flashcards", selected)} className="btn-ghost !px-3 !py-1.5 text-xs">
+          <button onClick={() => onGenerate("flashcards", selected)} className="btn-ghost px-3! py-1.5! text-xs">
             以「{selected.length > 12 ? selected.slice(0, 12) + "…" : selected}」出閃卡
           </button>
-          <button onClick={() => onGenerate("quiz", selected)} className="btn-ghost !px-3 !py-1.5 text-xs">
+          <button onClick={() => onGenerate("quiz", selected)} className="btn-ghost px-3! py-1.5! text-xs">
             出測驗
           </button>
         </div>

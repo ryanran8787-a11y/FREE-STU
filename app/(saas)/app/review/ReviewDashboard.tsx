@@ -26,6 +26,22 @@ export function ReviewDashboard() {
     if (queue.data && session === null) setSession(queue.data.items);
   }, [queue.data, session]);
   const router = useRouter();
+  // A3：弱點一鍵出題 — 直接起一份標準 quiz，帶 genId 跳筆記頁接著 poll。
+  const startQuiz = trpc.generation.start.useMutation();
+  const [quizzingId, setQuizzingId] = useState<string | null>(null);
+  const [quizError, setQuizError] = useState("");
+  async function quizWeak(noteId: string) {
+    setQuizzingId(noteId);
+    setQuizError("");
+    try {
+      const res = await startQuiz.mutateAsync({ noteId, type: "quiz" });
+      router.push(`/app/notes/${noteId}?gen=${res.id}`);
+    } catch (e) {
+      setQuizError(e instanceof Error ? e.message : "出題失敗");
+    } finally {
+      setQuizzingId(null);
+    }
+  }
   if (summary.isLoading) return <LoadingSkeleton lines={4} />;
   const s = summary.data!;
   const dueTotal = queue.data?.total ?? 0;
@@ -113,14 +129,25 @@ export function ReviewDashboard() {
           <h2 className="text-sm font-bold">弱點主題（錯題最多的筆記）</h2>
           <ul className="mt-2 flex flex-col gap-1">
             {s.weakNotes.map((w) => (
-              <li key={w.noteId} className="flex items-center justify-between text-sm">
+              <li key={w.noteId} className="flex items-center justify-between gap-2 text-sm">
                 <Link href={`/app/notes/${w.noteId}`} className="min-w-0 flex-1 truncate text-accent hover:underline">
                   {noteTitle(w.noteId)}
                 </Link>
-                <span className="shrink-0 text-xs text-muted">{w.wrong} 題答錯</span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="text-xs text-muted">{w.wrong} 題答錯</span>
+                  <button
+                    onClick={() => quizWeak(w.noteId)}
+                    disabled={quizzingId !== null}
+                    className="rounded border border-line px-2 py-0.5 text-xs font-semibold hover:border-primary hover:text-primary-deep disabled:opacity-50"
+                    title="針對這份筆記出一份測驗"
+                  >
+                    {quizzingId === w.noteId ? "出題中…" : "出一份測驗"}
+                  </button>
+                </span>
               </li>
             ))}
           </ul>
+          {quizError && <p className="mt-2 text-xs text-red-500">{quizError}</p>}
         </div>
       )}
     </div>

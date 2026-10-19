@@ -25,7 +25,7 @@ export default function ChatPage() {
       </div>
 
       {!keyStatus.isLoading && !keyStatus.data?.hasKey && (
-        <div className="card rise border-l-2 !border-l-sun p-4 text-sm">
+        <div className="card rise border-l-2 border-l-sun! p-4 text-sm">
           還沒設定 API Key，先去
           <a href="/app/settings" className="font-semibold text-accent underline">
             設定頁
@@ -36,7 +36,7 @@ export default function ChatPage() {
 
       <div className="card flex flex-wrap items-center gap-2 p-3 text-sm">
         <span className="font-semibold">參照筆記：</span>
-        <select value={noteId} onChange={(e) => setNoteId(e.target.value)} className="field !w-auto flex-1 text-xs">
+        <select value={noteId} onChange={(e) => setNoteId(e.target.value)} className="field w-auto! flex-1 text-xs">
           <option value="">不指定（純聊天）</option>
           <option value="*">全部筆記（跨筆記檢索）</option>
           {notes.data?.map((n) => (

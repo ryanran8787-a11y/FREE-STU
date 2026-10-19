@@ -132,14 +132,14 @@ export function CustomEditor({
         <button
           onClick={save}
           disabled={createTpl.isPending || updateTpl.isPending || !edBody.trim()}
-          className="btn-ghost flex-1 !px-3 !py-1.5 text-xs disabled:opacity-50"
+          className="btn-ghost flex-1 px-3! py-1.5! text-xs disabled:opacity-50"
         >
           {editingId ? "更新儲存" : "儲存成模板"}
         </button>
         <button
           onClick={() => fire({ customKind: "raw", customBody: edBody.trim() })}
           disabled={running || !edBody.trim()}
-          className="btn-ghost flex-1 !px-3 !py-1.5 text-xs disabled:opacity-50"
+          className="btn-ghost flex-1 px-3! py-1.5! text-xs disabled:opacity-50"
         >
           直接生成（不存）
         </button>

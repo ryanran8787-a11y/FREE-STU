@@ -39,10 +39,10 @@ export default function LandingPage() {
             >
               <GithubIcon size={16} />
             </a>
-            <Link href="/app/settings" className="btn-ghost !px-3 !py-1.5 text-sm">
+            <Link href="/app/settings" className="btn-ghost px-3! py-1.5! text-sm">
               設定 Key
             </Link>
-            <Link href="/app/notes" className="btn-primary !px-4 !py-1.5 text-sm">
+            <Link href="/app/notes" className="btn-primary px-4! py-1.5! text-sm">
               開始用
             </Link>
           </div>
