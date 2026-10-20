@@ -25,6 +25,12 @@
 .DS_Store
 *.pem
 
+# handoff / scratch docs (auto-generated or session notes)
+AGENTS.md
+BATCH*.md
+HANDOFF.md
+PROGRESS.md
+
 # debug
 npm-debug.log*
 yarn-debug.log*
