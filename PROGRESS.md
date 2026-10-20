@@ -1,4 +1,4 @@
-# PROGRESS — 壓縮接續點（2026-10-19 晚，HEAD `65d3765`）
+# PROGRESS — 壓縮接續點（2026-10-20，HEAD `b54086d`）
 
 > 用途：把這段長對話壓掉後，從這一份直接接手。讀完這份 + `BATCH1.md`（規格鎖定版）+ `BATCH23.md`（施工紀錄）即可開工。
 > 工作區：`A:\HSHSA`，分支 `main`，乾淨（`git status --short` 無輸出），已 push（`7cfec00..65d3765 main->main`）。
@@ -67,10 +67,11 @@
 ## 5. 還沒做的事（候選，未開工、未承諾順序）
 
 - Batch2 + Batch3 已做完（見 §1 與 `BATCH23.md`）。下一批由用戶指示。
+- **DeepTutor 分析完成**（`DEEPTUTOR.md`，文件層 + 四路子代理原始碼層）：三層記憶（`deeptutor/services/memory/`）、practice 四檔排程精確公式（`deeptutor/services/practice/scheduler.py`，v1.6.15）、通用留存模型（`deeptutor/learning/scheduler.py`，暫不需要）、`consult_subagent`/workspace/outputs/沙盒鏈（僅記錄不借用）。HSHSA 可借 Top-5 見 `DEEPTUTOR.md` §9（推薦先做：判前不洩答案、四檔排程照搬）。
 - 不做：pgvector、多用戶、自建 TTS Phase2、換 DB。
 
 ## 6. 接手第一步（壓縮後照做）
 
-1. `git pull --rebase`（或確認 HEAD 仍是 `65d3765`），`git status --short` 應乾淨。
+1. `git pull --rebase`（或確認 HEAD 仍是 `b54086d`），`git status --short` 應乾淨。
 2. `npx vitest run`（期望 11 files / 105 tests 綠）+ `npx tsc --noEmit`。
 3. 讀 `BATCH1.md`（規格）+ 本文件 §2–§4（實作現況）+ `BATCH23.md`（Batch2/3 施工紀錄），然後按用戶指示開下一批。
