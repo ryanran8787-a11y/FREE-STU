@@ -52,10 +52,10 @@ describe("scheduleOne", () => {
 });
 
 describe("scheduleSm2：四檔（Again/Hard/Good/Easy）", () => {
-  it("Again：interval=10/1440 天（取 3 位小數=0.007）、streak 歸零、lapses+1、ease-0.2", () => {
+  it("Again：interval≈10 分鐘（10/1440 天）、streak 歸零、lapses+1、ease-0.2", () => {
     const s = scheduleSm2({ intervalDays: 30, ease: 2.5, streak: 4, lapses: 1, reviewCount: 9 }, "again", NOW);
-    // 10/1440=0.006944…，規格要求 interval 保留 3 位小數 → 0.007（≈10.08 分鐘，仍在「10 分鐘後」語義內）
-    expect(s.intervalDays).toBe(0.007);
+    // 斷言意圖（10 分鐘級），不寫死 rounding 後的 0.007：改 rounding 策略時這裡不該整片紅。
+    expect(s.intervalDays).toBeCloseTo(10 / 1440, 3);
     expect(s.streak).toBe(0);
     expect(s.lapses).toBe(2);
     expect(s.ease).toBeCloseTo(2.3, 10);

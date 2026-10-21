@@ -156,60 +156,110 @@ describe("T3-3：四檔 SM-2 持久化（recordAttempt 走 attempt.log → revie
     { question: "A3 第三題", options: ["a", "b", "c"], answer: 2 },
   ]);
 
-  beforeAll(async () => {
-    await db.generation.create({ data: { id: "g2", type: "quiz", status: "done", result: QUIZ3, noteId: "n1" } });
-    await db.generation.create({ data: { id: "g3", type: "quiz", status: "done", result: QUIZ3, noteId: "n1" } });
-  });
+  // 順序獨立性：每個 case 自建自己的 generation（不共用 beforeAll 的固定 id）。
+  // 原因：review.queue() 的 lazy backfill 會替「所有」done 的 quiz gen 補冷卡，
+  // 只要別的 case 先呼叫過 queue，共用 gen 就會被提前建卡，Hard 的 ×1.2 也會從 1.2 變 1.0。
+  let seq = 0;
+  async function freshGen(): Promise<string> {
+    const id = `t3-${seq++}`;
+    await db.generation.create({ data: { id, type: "quiz", status: "done", result: QUIZ3, noteId: "n1" } });
+    return id;
+  }
+  /** 明確清掉該 gen 的卡，讓「冷啟動」這個前置條件由本 case 自己保證。 */
+  async function coldStart(genId: string): Promise<void> {
+    await db.reviewCard.deleteMany({ where: { genId } });
+  }
+  async function cardOf(genId: string, qIndex: number) {
+    return db.reviewCard.findUnique({ where: { genId_qIndex: { genId, qIndex } } });
+  }
 
   it("高信心答錯 → Again：intervalDays≈10/1440、ease 2.3、streak 0、lapses 1、reviewCount 1", async () => {
+    const genId = await freshGen();
+    await coldStart(genId);
     const before = Date.now();
-    await caller.attempt.log({ genId: "g2", qIndex: 0, picked: 1, correct: false, confidence: "high" });
-    const card = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g2", qIndex: 0 } } });
+    await caller.attempt.log({ genId, qIndex: 0, picked: 1, correct: false, confidence: "high" });
+    const card = await cardOf(genId, 0);
     expect(card).not.toBeNull();
-    expect(card!.intervalDays).toBe(0.007); // 10/1440 取 3 位小數
+    // 斷言意圖：間隔是「10 分鐘級」，不是字面上的 0.007 這個 rounding 副作用
+    expect(card!.intervalDays).toBeCloseTo(10 / 1440, 3);
+    expect(card!.intervalDays).toBeGreaterThan(0);
+    expect(card!.intervalDays).toBeLessThan(1);
     expect(card!.ease).toBeCloseTo(2.3, 5);
     expect(card!.streak).toBe(0);
     expect(card!.lapses).toBe(1);
     expect(card!.reviewCount).toBe(1);
-    // dueAt = 作答時間 + 10 分鐘（落在未來、且遠早於 1 天）
+    // dueAt = 作答時間 + 約 10 分鐘（落在未來、且遠早於 1 天）
     const due = card!.dueAt.getTime();
     expect(due).toBeGreaterThan(before + 9 * 60_000);
-    expect(due).toBeLessThan(before + 11 * 60_000 + 60_000);
+    expect(due).toBeLessThan(before + 11 * 60_000);
   });
 
-  it("低信心答對 → Hard：interval 1.2 天（不是 3 天起步）、ease 2.35、streak 0", async () => {
-    await caller.attempt.log({ genId: "g2", qIndex: 1, picked: 1, correct: true, confidence: "low" });
-    const card = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g2", qIndex: 1 } } });
+  it("低信心答對 → Hard（冷啟動）：interval 1.2 天，不是 Good 的 3 天起步", async () => {
+    const genId = await freshGen();
+    await coldStart(genId); // 自己保證「沒有卡」，不靠其他 case 的副作用
+    // quiz 由 server 依 picked 判分：qIndex 0 的正解是 0，picked 必須選 0 才算答對
+    await caller.attempt.log({ genId, qIndex: 0, picked: 0, correct: true, confidence: "low" });
+    const card = await cardOf(genId, 0);
     expect(card).not.toBeNull();
+    // 冷啟動：interval 預設 1 → max(1, 1×1.2) = 1.2
     expect(card!.intervalDays).toBeCloseTo(1.2, 4);
-    expect(card!.intervalDays).not.toBeCloseTo(3, 4);
+    // 意圖：Hard 是「比 1 天長、但遠短於 Good 的 3 天」，不該是 Good 的起跳值
+    expect(card!.intervalDays).toBeGreaterThanOrEqual(1);
+    expect(card!.intervalDays).toBeLessThan(3);
+    expect(card!.ease).toBeCloseTo(2.35, 5);
+    expect(card!.streak).toBe(0);
+    expect(card!.reviewCount).toBe(1);
+  });
+
+  it("低信心答對 → Hard（已有冷卡）：interval 1.0 天（現況釘住，見已知不一致）", async () => {
+    // cards.ts 的 state 直接吃卡上的 intervalDays=0，Hard 走 max(1, 0×1.2)=1.0；
+    // 冷啟動（無卡）則是 1.2。同一輸入因「有沒有先開過複習頁（lazy backfill 建冷卡）」而不同。
+    // 本 case 把「有冷卡」這條分支（cards.ts 的 prior.length === 0 路徑）明確釘住，避免日後悄悄漂移。
+    const genId = await freshGen();
+    await db.reviewCard.create({
+      data: {
+        genId, noteId: "n1", kind: "quiz", qIndex: 0, question: "A1 第一題",
+        intervalDays: 0, ease: 2.5, streak: 0, reviewCount: 0, lapses: 0, dueAt: new Date(),
+      },
+    });
+    await caller.attempt.log({ genId, qIndex: 0, picked: 0, correct: true, confidence: "low" });
+    const card = await cardOf(genId, 0);
+    expect(card).not.toBeNull();
+    expect(card!.intervalDays).toBeCloseTo(1.0, 4);
+    expect(card!.intervalDays).toBeLessThan(3); // 仍不是 Good 的 3 天起步
     expect(card!.ease).toBeCloseTo(2.35, 5);
     expect(card!.streak).toBe(0);
     expect(card!.reviewCount).toBe(1);
   });
 
   it("連續作答累積 reviewCount 與 streak（Good 連兩次：3 → 7.5 天）", async () => {
-    await caller.attempt.log({ genId: "g2", qIndex: 2, picked: 2, correct: true, confidence: "med" });
-    const first = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g2", qIndex: 2 } } });
+    const genId = await freshGen();
+    await coldStart(genId);
+    await caller.attempt.log({ genId, qIndex: 0, picked: 0, correct: true, confidence: "med" });
+    const first = await cardOf(genId, 0);
+    expect(first).not.toBeNull();
     expect(first!.intervalDays).toBeCloseTo(3, 4);
     expect(first!.streak).toBe(1);
     expect(first!.reviewCount).toBe(1);
-    await caller.attempt.log({ genId: "g2", qIndex: 2, picked: 2, correct: true, confidence: "med" });
-    const second = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g2", qIndex: 2 } } });
-    expect(second!.intervalDays).toBeCloseTo(7.5, 4);
+    await caller.attempt.log({ genId, qIndex: 0, picked: 0, correct: true, confidence: "med" });
+    const second = await cardOf(genId, 0);
+    expect(second).not.toBeNull();
+    expect(second!.intervalDays).toBeCloseTo(7.5, 4); // 3 × ease 2.5
     expect(second!.streak).toBe(2);
     expect(second!.reviewCount).toBe(2);
     expect(second!.ease).toBeCloseTo(2.5, 5);
   });
 
   it("舊卡 lazy backfill：無卡但已有作答歷史 → replaySm2 補出合理 ease/streak/reviewCount", async () => {
-    // g3 q0：兩次 Good 歷史、沒有卡 → 首次 review.queue 的 backfill 用 replaySm2 重建
+    // 兩次 Good 歷史、沒有卡 → 首次 review.queue 的 backfill 用 replaySm2 重建
+    const genId = await freshGen();
+    await coldStart(genId);
     const t1 = new Date(Date.now() - 20 * 86_400_000);
     const t2 = new Date(Date.now() - 10 * 86_400_000);
-    await db.attempt.create({ data: { genId: "g3", noteId: "n1", kind: "quiz", qIndex: 0, picked: 0, correct: true, confidence: "med", createdAt: t1 } });
-    await db.attempt.create({ data: { genId: "g3", noteId: "n1", kind: "quiz", qIndex: 0, picked: 0, correct: true, confidence: "med", createdAt: t2 } });
+    await db.attempt.create({ data: { genId, noteId: "n1", kind: "quiz", qIndex: 0, picked: 0, correct: true, confidence: "med", createdAt: t1 } });
+    await db.attempt.create({ data: { genId, noteId: "n1", kind: "quiz", qIndex: 0, picked: 0, correct: true, confidence: "med", createdAt: t2 } });
     await caller.review.queue({ limit: 50 });
-    const card = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g3", qIndex: 0 } } });
+    const card = await cardOf(genId, 0);
     expect(card).not.toBeNull();
     expect(card!.intervalDays).toBeCloseTo(7.5, 4);
     expect(card!.ease).toBeCloseTo(2.5, 5);
@@ -219,16 +269,22 @@ describe("T3-3：四檔 SM-2 持久化（recordAttempt 走 attempt.log → revie
   });
 
   it("舊卡（reviewCount=0）再作答：只重播「當次之前」歷史，當次不重複計步", async () => {
-    // g3 q1：上一個 case 的 lazy backfill 已替它建了冷卡（reviewCount=0、ease 2.5、streak 0），
-    // 正好是 T3-2 遷移前的舊卡形狀；再補一筆歷史作答即構成「舊卡 + 歷史」。
-    const legacy = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g3", qIndex: 1 } } });
-    expect(legacy!.reviewCount).toBe(0);
-    await db.attempt.create({
-      data: { genId: "g3", noteId: "n1", kind: "quiz", qIndex: 1, picked: 1, correct: true, confidence: "med", createdAt: new Date(Date.now() - 10 * 86_400_000) },
+    // 自建「T3-2 遷移前的舊卡」形狀：reviewCount=0、預設 ease/streak，不依賴其他 case 的 backfill。
+    const genId = await freshGen();
+    await db.reviewCard.create({
+      data: {
+        genId, noteId: "n1", kind: "quiz", qIndex: 0, question: "A1 第一題",
+        intervalDays: 0, ease: 2.5, streak: 0, reviewCount: 0, lapses: 0, dueAt: new Date(),
+      },
     });
-    await caller.attempt.log({ genId: "g3", qIndex: 1, picked: 1, correct: true, confidence: "med" });
-    const card = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g3", qIndex: 1 } } });
-    // 歷史(1 步 Good) → 3 天/streak1/reviewCount1，再走當次 Good → 7.5 天/streak2/reviewCount2
+    await db.attempt.create({
+      data: { genId, noteId: "n1", kind: "quiz", qIndex: 0, picked: 0, correct: true, confidence: "med", createdAt: new Date(Date.now() - 10 * 86_400_000) },
+    });
+    await caller.attempt.log({ genId, qIndex: 0, picked: 0, correct: true, confidence: "med" });
+    const card = await cardOf(genId, 0);
+    // 歷史(1 步 Good) → 3 天/streak1/reviewCount1，再走當次 Good → 7.5 天/streak2/reviewCount2。
+    // 若 attemptId 守衛失效（當次被一起重播）→ 會變成 18.75 天/streak3/reviewCount3，這裡必紅。
+    expect(card).not.toBeNull();
     expect(card!.intervalDays).toBeCloseTo(7.5, 4);
     expect(card!.streak).toBe(2);
     expect(card!.reviewCount).toBe(2);
