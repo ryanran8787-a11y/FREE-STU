@@ -149,6 +149,93 @@ describe("A2：attempt.log → review.queue 經 ReviewCard 持久化", () => {
   });
 });
 
+describe("T3-3：四檔 SM-2 持久化（recordAttempt 走 attempt.log → review.queue）", () => {
+  const QUIZ3 = JSON.stringify([
+    { question: "A1 第一題", options: ["a", "b", "c"], answer: 0 },
+    { question: "A2 第二題", options: ["a", "b", "c"], answer: 1 },
+    { question: "A3 第三題", options: ["a", "b", "c"], answer: 2 },
+  ]);
+
+  beforeAll(async () => {
+    await db.generation.create({ data: { id: "g2", type: "quiz", status: "done", result: QUIZ3, noteId: "n1" } });
+    await db.generation.create({ data: { id: "g3", type: "quiz", status: "done", result: QUIZ3, noteId: "n1" } });
+  });
+
+  it("高信心答錯 → Again：intervalDays≈10/1440、ease 2.3、streak 0、lapses 1、reviewCount 1", async () => {
+    const before = Date.now();
+    await caller.attempt.log({ genId: "g2", qIndex: 0, picked: 1, correct: false, confidence: "high" });
+    const card = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g2", qIndex: 0 } } });
+    expect(card).not.toBeNull();
+    expect(card!.intervalDays).toBe(0.007); // 10/1440 取 3 位小數
+    expect(card!.ease).toBeCloseTo(2.3, 5);
+    expect(card!.streak).toBe(0);
+    expect(card!.lapses).toBe(1);
+    expect(card!.reviewCount).toBe(1);
+    // dueAt = 作答時間 + 10 分鐘（落在未來、且遠早於 1 天）
+    const due = card!.dueAt.getTime();
+    expect(due).toBeGreaterThan(before + 9 * 60_000);
+    expect(due).toBeLessThan(before + 11 * 60_000 + 60_000);
+  });
+
+  it("低信心答對 → Hard：interval 1.2 天（不是 3 天起步）、ease 2.35、streak 0", async () => {
+    await caller.attempt.log({ genId: "g2", qIndex: 1, picked: 1, correct: true, confidence: "low" });
+    const card = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g2", qIndex: 1 } } });
+    expect(card).not.toBeNull();
+    expect(card!.intervalDays).toBeCloseTo(1.2, 4);
+    expect(card!.intervalDays).not.toBeCloseTo(3, 4);
+    expect(card!.ease).toBeCloseTo(2.35, 5);
+    expect(card!.streak).toBe(0);
+    expect(card!.reviewCount).toBe(1);
+  });
+
+  it("連續作答累積 reviewCount 與 streak（Good 連兩次：3 → 7.5 天）", async () => {
+    await caller.attempt.log({ genId: "g2", qIndex: 2, picked: 2, correct: true, confidence: "med" });
+    const first = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g2", qIndex: 2 } } });
+    expect(first!.intervalDays).toBeCloseTo(3, 4);
+    expect(first!.streak).toBe(1);
+    expect(first!.reviewCount).toBe(1);
+    await caller.attempt.log({ genId: "g2", qIndex: 2, picked: 2, correct: true, confidence: "med" });
+    const second = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g2", qIndex: 2 } } });
+    expect(second!.intervalDays).toBeCloseTo(7.5, 4);
+    expect(second!.streak).toBe(2);
+    expect(second!.reviewCount).toBe(2);
+    expect(second!.ease).toBeCloseTo(2.5, 5);
+  });
+
+  it("舊卡 lazy backfill：無卡但已有作答歷史 → replaySm2 補出合理 ease/streak/reviewCount", async () => {
+    // g3 q0：兩次 Good 歷史、沒有卡 → 首次 review.queue 的 backfill 用 replaySm2 重建
+    const t1 = new Date(Date.now() - 20 * 86_400_000);
+    const t2 = new Date(Date.now() - 10 * 86_400_000);
+    await db.attempt.create({ data: { genId: "g3", noteId: "n1", kind: "quiz", qIndex: 0, picked: 0, correct: true, confidence: "med", createdAt: t1 } });
+    await db.attempt.create({ data: { genId: "g3", noteId: "n1", kind: "quiz", qIndex: 0, picked: 0, correct: true, confidence: "med", createdAt: t2 } });
+    await caller.review.queue({ limit: 50 });
+    const card = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g3", qIndex: 0 } } });
+    expect(card).not.toBeNull();
+    expect(card!.intervalDays).toBeCloseTo(7.5, 4);
+    expect(card!.ease).toBeCloseTo(2.5, 5);
+    expect(card!.streak).toBe(2);
+    expect(card!.reviewCount).toBe(2);
+    expect(card!.lapses).toBe(0);
+  });
+
+  it("舊卡（reviewCount=0）再作答：只重播「當次之前」歷史，當次不重複計步", async () => {
+    // g3 q1：上一個 case 的 lazy backfill 已替它建了冷卡（reviewCount=0、ease 2.5、streak 0），
+    // 正好是 T3-2 遷移前的舊卡形狀；再補一筆歷史作答即構成「舊卡 + 歷史」。
+    const legacy = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g3", qIndex: 1 } } });
+    expect(legacy!.reviewCount).toBe(0);
+    await db.attempt.create({
+      data: { genId: "g3", noteId: "n1", kind: "quiz", qIndex: 1, picked: 1, correct: true, confidence: "med", createdAt: new Date(Date.now() - 10 * 86_400_000) },
+    });
+    await caller.attempt.log({ genId: "g3", qIndex: 1, picked: 1, correct: true, confidence: "med" });
+    const card = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: "g3", qIndex: 1 } } });
+    // 歷史(1 步 Good) → 3 天/streak1/reviewCount1，再走當次 Good → 7.5 天/streak2/reviewCount2
+    expect(card!.intervalDays).toBeCloseTo(7.5, 4);
+    expect(card!.streak).toBe(2);
+    expect(card!.reviewCount).toBe(2);
+    expect(card!.ease).toBeCloseTo(2.5, 5);
+  });
+});
+
 describe("B1：plan.pinTask → review.queue（kind=plan 快照卡）", () => {
   const PLAN_RESULT = JSON.stringify([{ day: 1, title: "主題一", tasks: ["任務A", "任務B"] }]);
   it("釘選任務後 queue 出現 plan 卡（question 快照），重複釘冪等，unpin 後消失", async () => {
