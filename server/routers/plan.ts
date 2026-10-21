@@ -64,7 +64,7 @@ export const planRouter = router({
         create: {
           genId: plan.id, noteId: plan.noteId, kind: "plan", qIndex,
           question: `D${input.day} ${d.title}：${task}`,
-          intervalDays: 0, dueAt, lapses: 0,
+          intervalDays: 0, ease: 2.5, streak: 0, reviewCount: 0, dueAt, lapses: 0,
         },
         update: {
           noteId: plan.noteId, question: `D${input.day} ${d.title}：${task}`,

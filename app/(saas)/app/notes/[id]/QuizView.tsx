@@ -10,12 +10,14 @@ function stripLabel(op: string): string {
   return op.replace(/^[A-D][、．.。:：\s]*/, "");
 }
 
-export type QuizQuestion = { question: string; options: string[]; answer: number; explanation?: string };
-
-/** Quiz 深模組：答題 + 信心 + 解釋 + 匯出 MD，全部收在內部。 */
-export function Quiz({ result, title, genId }: { result: string; title: string; genId: string }) {
-  const qs = JSON.parse(result) as QuizQuestion[];
+/** T1-3 Top-1：互動吃 quizInteract（無 answer/explanation），判分以 server 回為準；列印/匯出吃 quizPrintable。 */
+export function Quiz({ title, genId }: { title: string; genId: string }) {
+  const interact = trpc.generation.quizInteract.useQuery({ id: genId });
+  const printable = trpc.generation.quizPrintable.useQuery({ id: genId });
+  const qs = interact.data?.items ?? [];
+  const full = printable.data?.items ?? [];
   const [picked, setPicked] = useState<Record<number, number>>({});
+  const [verdict, setVerdict] = useState<Record<number, { correct: boolean; answer: number }>>({});
   const [conf, setConf] = useState<Record<number, "high" | "med" | "low">>({});
   const [explain, setExplain] = useState<Record<number, string>>({});
   const [explainLoading, setExplainLoading] = useState<Set<number>>(new Set());
@@ -36,51 +38,75 @@ export function Quiz({ result, title, genId }: { result: string; title: string; 
       setExplainLoading((s) => { const n = new Set(s); n.delete(vars.qIndex); return n; });
     },
   });
-  const done = qs.length > 0 && Object.keys(picked).length === qs.length;
-  const score = qs.filter((q, qi) => picked[qi] === q.answer).length;
-  if (qs.length === 0) {
+  if (interact.isLoading) {
+    return <EmptyState icon={<QuizIcon size={28} />} text="測驗載入中…" />;
+  }
+  if (!interact.data || interact.data.status !== "done" || qs.length === 0) {
     return <EmptyState icon={<QuizIcon size={28} />} text="這份測驗是空的，重新生成一次就會有題目。" />;
   }
-  function pick(qi: number, oi: number, correct: boolean) {
-    if (genId) log.mutate({ genId, qIndex: qi, picked: oi, correct, confidence: conf[qi] ?? "med" });
-    setPicked((p) => (p[qi] !== undefined ? p : { ...p, [qi]: oi }));
+  const done = qs.length > 0 && Object.keys(picked).length === qs.length;
+  const score = Object.values(verdict).filter((v) => v.correct).length;
+  function pick(qi: number, oi: number) {
+    if (!genId || picked[qi] !== undefined) return;
+    setPicked((p) => ({ ...p, [qi]: oi }));
+    log.mutate(
+      { genId, qIndex: qi, picked: oi, confidence: conf[qi] ?? "med" },
+      {
+        onSuccess: (data) => {
+          if (typeof (data as { answer?: number }).answer === "number") {
+            const d = data as { correct: boolean; answer: number };
+            setVerdict((v) => ({ ...v, [qi]: { correct: d.correct, answer: d.answer } }));
+          } else {
+            const d = data as { correct: boolean };
+            setVerdict((v) => ({ ...v, [qi]: { correct: d.correct, answer: -1 } }));
+          }
+        },
+      },
+    );
   }
   function askExplain(qi: number) {
     if (!genId || explain[qi] || explainLoading.has(qi)) return;
     setExplainLoading((s) => new Set(s).add(qi));
     explainMut.mutate({ id: genId, qIndex: qi });
   }
+  function exportMd() {
+    if (full.length > 0) downloadText(`${safeName(title)}-測驗.md`, quizToMd(title, full));
+  }
   return (
     <div className="flex flex-col gap-3 print:gap-2 print:[print-color-adjust:exact]">
       <div className="flex items-center print:hidden">
-        <button onClick={() => downloadText(`${safeName(title)}-測驗.md`, quizToMd(title, qs))} className="ml-auto rounded border border-line px-2 py-0.5 text-xs font-semibold text-muted hover:border-muted hover:text-ink">
+        <button onClick={exportMd} className="ml-auto rounded border border-line px-2 py-0.5 text-xs font-semibold text-muted hover:border-muted hover:text-ink">
           匯出 MD
         </button>
       </div>
       {/* 列印專用標題（螢幕不顯示） */}
-      <h2 className="hidden text-lg font-extrabold print:block">{title} — 測驗（共 {qs.length} 題）</h2>
+      <h2 className="hidden text-lg font-extrabold print:block">{title} — 測驗（共 {full.length || qs.length} 題）</h2>
       {done && (
         <div className="card rise border-accent bg-accent-soft p-4 text-center font-bold text-ink" role="status">
           {score}/{qs.length} 分 {score === qs.length ? "全對！" : score >= qs.length / 2 ? "不錯，錯的再看一次" : "加油，再複習一下"}
         </div>
       )}
-      {qs.map((q, qi) => (
+      {qs.map((q, qi) => {
+        const v = verdict[qi];
+        const ans = v?.answer;
+        const exp = full[qi]?.explanation;
+        return (
         <div key={qi} className="card break-inside-avoid p-4 print:border print:border-neutral-400 print:shadow-none">
           <div className="text-sm font-bold">{qi + 1}. {q.question}</div>
-          {/* 列印版正解行（螢幕 hidden） */}
+          {/* 列印版正解行（螢幕 hidden，資料走 printable 通道） */}
           <div className="mt-1 hidden text-xs font-semibold print:block">
-            正解：{"ABCD"[q.answer]}．{stripLabel(q.options[q.answer] ?? "")}
+            {full[qi] ? <>正解：{"ABCD"[full[qi].answer]}．{stripLabel(full[qi].options[full[qi].answer] ?? "")}</> : null}
           </div>
           <div className="mt-2 flex items-center gap-1 text-[11px] print:hidden" role="radiogroup" aria-label={`第 ${qi + 1} 題信心`}>
             <span className="text-muted">信心：</span>
-            {([["high", "有把握"], ["med", "不確定"], ["low", "瞎猜"]] as const).map(([v, label]) => (
+            {([["high", "有把握"], ["med", "不確定"], ["low", "瞎猜"]] as const).map(([val, label]) => (
               <button
-                key={v}
+                key={val}
                 disabled={picked[qi] !== undefined}
-                onClick={() => setConf((c) => ({ ...c, [qi]: v }))}
+                onClick={() => setConf((c) => ({ ...c, [qi]: val }))}
                 role="radio"
-                aria-checked={(conf[qi] ?? "med") === v}
-                className={`rounded border px-1.5 py-0.5 ${((conf[qi] ?? "med") === v) ? "invert-chip border-ink font-semibold" : "border-line text-muted hover:border-muted"} disabled:opacity-60`}
+                aria-checked={(conf[qi] ?? "med") === val}
+                className={`rounded border px-1.5 py-0.5 ${((conf[qi] ?? "med") === val) ? "invert-chip border-ink font-semibold" : "border-line text-muted hover:border-muted"} disabled:opacity-60`}
               >
                 {label}
               </button>
@@ -90,12 +116,12 @@ export function Quiz({ result, title, genId }: { result: string; title: string; 
             {q.options.map((raw, oi) => {
               const op = stripLabel(raw);
               const sel = picked[qi] === oi;
-              const show = picked[qi] !== undefined;
-              const correct = oi === q.answer;
+              const show = picked[qi] !== undefined && v !== undefined;
+              const correct = ans !== undefined && oi === ans;
               return (
                 <button
                   key={oi}
-                  onClick={() => pick(qi, oi, oi === q.answer)}
+                  onClick={() => pick(qi, oi)}
                   aria-pressed={sel}
                   className={`rounded-md border px-3 py-2 text-left text-sm transition-colors ${
                     show && correct
@@ -111,20 +137,20 @@ export function Quiz({ result, title, genId }: { result: string; title: string; 
               );
             })}
           </div>
-          {/* 列印版選項清單：純文字、正解標 ★ */}
+          {/* 列印版選項清單：純文字、正解標 ★（走 printable） */}
           <ol className="mt-1 hidden list-none text-xs leading-relaxed print:block">
-            {q.options.map((raw, oi) => (
+            {(full[qi]?.options ?? q.options).map((raw, oi) => (
               <li key={oi}>
-                {"ABCD"[oi]}．{stripLabel(raw)}{oi === q.answer ? " ★" : ""}
+                {"ABCD"[oi]}．{stripLabel(raw)}{full[qi] && oi === full[qi].answer ? " ★" : ""}
               </li>
             ))}
           </ol>
-          {picked[qi] !== undefined && q.explanation && (
+          {picked[qi] !== undefined && v && exp && (
             <div className="mt-2 rounded-md bg-paper px-3 py-2 text-xs leading-relaxed text-muted print:border print:border-neutral-300">
-              <span className="font-bold text-ink">解析：</span>{q.explanation}
+              <span className="font-bold text-ink">解析：</span>{exp}
             </div>
           )}
-          {picked[qi] !== undefined && picked[qi] !== q.answer && (
+          {picked[qi] !== undefined && v && !v.correct && (
             <div className="mt-2 print:hidden">
               <button
                 onClick={() => askExplain(qi)}
@@ -141,9 +167,10 @@ export function Quiz({ result, title, genId }: { result: string; title: string; 
             </div>
           )}
         </div>
-      ))}
+        );
+      })}
       {done && (
-        <button onClick={() => setPicked({})} className="btn-ghost self-center text-sm print:hidden">
+        <button onClick={() => { setPicked({}); setVerdict({}); }} className="btn-ghost self-center text-sm print:hidden">
           再考一次
         </button>
       )}

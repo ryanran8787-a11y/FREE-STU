@@ -63,7 +63,16 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await db.$disconnect();
-  await fs.rm(DB_FILE, { force: true });
+  // Windows 上偶發 EBUSY（連線剛斷、檔案 handle 未釋放）：重試幾次，仍刪不掉就放著（tmp 檔無害）。
+  // 不對它 fail：這是清理步驟，不是被測行為。
+  for (let i = 0; i < 5; i++) {
+    try {
+      await fs.rm(DB_FILE, { force: true });
+      break;
+    } catch {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
 });
 
 describe("ensureFts", () => {

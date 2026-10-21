@@ -18,6 +18,7 @@ import {
 } from "@/server/generation/options";
 import { runGeneration } from "@/server/generation/runners";
 import { explainQuiz } from "@/server/generation/explain";
+import { parseQuizItems, stripQuizForInteract } from "@/lib/quiz";
 
 export const generationRouter = router({
   start: publicProcedure
@@ -99,6 +100,23 @@ export const generationRouter = router({
     .mutation(async ({ input }) => {
       return explainQuiz(input.id, input.qIndex);
     }),
+
+  /**
+   * T1-2 Top-1 互動通道：回去答案版（永不夾帶 answer/explanation）。
+   * 判分走 attempt.log（server 判、判後釋放該題答案）；列印/匯出走 quizPrintable。
+   */
+  quizInteract: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+    const gen = await db.generation.findUnique({ where: { id: input.id } });
+    if (!gen || gen.type !== "quiz") throw new Error("找不到這份測驗");
+    return { status: gen.status, items: stripQuizForInteract(parseQuizItems(gen.result)), error: gen.error };
+  }),
+
+  /** T1-2 列印/匯出專用通道：完整版（含答案），互動頁不用這個端點。 */
+  quizPrintable: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+    const gen = await db.generation.findUnique({ where: { id: input.id } });
+    if (!gen || gen.type !== "quiz") throw new Error("找不到這份測驗");
+    return { status: gen.status, items: parseQuizItems(gen.result), error: gen.error };
+  }),
 
   /** 節點已理解標記：存在 options.mastered */
   setMastered: publicProcedure

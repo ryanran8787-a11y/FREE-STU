@@ -54,7 +54,10 @@ const DDL = [
      "kind" TEXT NOT NULL DEFAULT 'quiz',
      "qIndex" INTEGER NOT NULL,
      "question" TEXT NOT NULL DEFAULT '',
-     "intervalDays" INTEGER NOT NULL DEFAULT 0,
+     "intervalDays" REAL NOT NULL DEFAULT 0,
+     "ease" REAL NOT NULL DEFAULT 2.5,
+     "streak" INTEGER NOT NULL DEFAULT 0,
+     "reviewCount" INTEGER NOT NULL DEFAULT 0,
      "dueAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
      "lapses" INTEGER NOT NULL DEFAULT 0,
      "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -115,9 +118,22 @@ describe("A2：attempt.log → review.queue 經 ReviewCard 持久化", () => {
     expect(cards2).toHaveLength(1);
   });
 
-  it("答錯後該題當天/明天到期，出現在 queue", async () => {
-    // 高信心答錯 interval=0（當天回來）：log 後立刻到期，queue 該出現
+  it("答錯（Again）後 10 分鐘到期：先不出現，撥到過去後出現在 queue", async () => {
+    // T3-2：高信心答錯 → Again=10/1440 天（≈0.007），dueAt=now+10 分鐘 → 立刻查還沒到期（O(due) 契約）
     await caller.attempt.log({ genId: "g1", qIndex: 1, picked: 0, correct: false, confidence: "high" });
+    const rows = (await db.$queryRawUnsafe(`SELECT "intervalDays","ease","streak","lapses","reviewCount" FROM "ReviewCard" WHERE "genId"='g1' AND "qIndex"=1`)) as {
+      intervalDays: number; ease: number; streak: number; lapses: number; reviewCount: number;
+    }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0].intervalDays).toBeCloseTo(10 / 1440, 3);
+    expect(rows[0].ease).toBeCloseTo(2.3, 5);
+    expect(rows[0].streak).toBe(0);
+    expect(rows[0].lapses).toBe(1);
+    expect(rows[0].reviewCount).toBe(1);
+    const q0 = await caller.review.queue({ limit: 20 });
+    expect(q0.items.find((i) => i.genId === "g1" && i.qIndex === 1)).toBeUndefined();
+    // 撥到過去（Prisma 寫 dueAt，raw SQL 無時區格式會讓 lte 比較失效）→ 到期出現
+    await db.reviewCard.updateMany({ where: { genId: "g1", qIndex: 1 }, data: { dueAt: new Date(Date.now() - 1000) } });
     const q = await caller.review.queue({ limit: 20 });
     const hit = q.items.find((i) => i.genId === "g1" && i.qIndex === 1);
     expect(hit).toBeDefined();

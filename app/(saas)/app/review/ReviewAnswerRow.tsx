@@ -13,17 +13,20 @@ export type DueItem = {
   intervalDays: number;
 };
 
-type QuizQ = { question: string; options: string[]; answer: number };
+type QuizQ = { question: string; options: string[] };
 type CardQ = { front: string; back: string };
 
-/** Review 原地作答行：展開 → 按需查 generation 拿選項/卡背 → 作答打 attempt.log → 回報 onAnswered。 */
+/** Review 原地作答行：展開 → quiz 吃 quizInteract（無答案）/閃卡吃 getStatus → 作答打 attempt.log（server 判）→ 回報 onAnswered。 */
 export function ReviewAnswerRow({ item, onAnswered }: { item: DueItem; onAnswered: (r: { genId: string; qIndex: number; correct: boolean }) => void }) {
   const [open, setOpen] = useState(false);
   const [conf, setConf] = useState<"high" | "med" | "low">("med");
   const [done, setDone] = useState<null | boolean>(null);
+  const [answer, setAnswer] = useState<number | null>(null);
   const utils = trpc.useUtils();
   // B1：plan 卡 genId=planId（無 generation），查詢要跳過；完成=刪卡（unpinTask）。
-  const gen = trpc.generation.getStatus.useQuery({ id: item.genId }, { enabled: open && item.kind !== "plan" });
+  // T1-3：quiz 吃去答案端點 quizInteract；閃卡沿用 getStatus（只拿 back，無答案可洩）。
+  const quizQuery = trpc.generation.quizInteract.useQuery({ id: item.genId }, { enabled: open && item.kind === "quiz" });
+  const cardQuery = trpc.generation.getStatus.useQuery({ id: item.genId }, { enabled: open && item.kind === "flashcards" });
   const unpin = trpc.plan.unpinTask.useMutation({
     onSuccess: () => {
       utils.review.queue.invalidate();
@@ -37,12 +40,19 @@ export function ReviewAnswerRow({ item, onAnswered }: { item: DueItem; onAnswere
     },
   });
 
-  function answerQuiz(q: QuizQ, oi: number) {
+  function answerQuiz(oi: number) {
     if (done !== null) return;
-    const correct = oi === q.answer;
-    setDone(correct);
-    log.mutate({ genId: item.genId, qIndex: item.qIndex, picked: oi, correct, confidence: conf });
-    onAnswered({ genId: item.genId, qIndex: item.qIndex, correct });
+    log.mutate(
+      { genId: item.genId, qIndex: item.qIndex, picked: oi, confidence: conf },
+      {
+        onSuccess: (data) => {
+          const d = data as { correct: boolean; answer?: number };
+          setDone(d.correct);
+          if (typeof d.answer === "number") setAnswer(d.answer);
+          onAnswered({ genId: item.genId, qIndex: item.qIndex, correct: d.correct });
+        },
+      },
+    );
   }
 
   function grade(correct: boolean, c: "high" | "med" | "low") {
@@ -77,12 +87,12 @@ export function ReviewAnswerRow({ item, onAnswered }: { item: DueItem; onAnswere
           </button>
         </div>
       );
-    } else if (gen.isLoading) body = <p className="mt-2 text-xs text-muted">載入題目中…</p>;
-    else if (!gen.data?.result) body = <p className="mt-2 text-xs text-muted">題目已刪除或載入失敗，去筆記頁查看。</p>;
+    } else if (item.kind === "quiz" ? quizQuery.isLoading : cardQuery.isLoading) body = <p className="mt-2 text-xs text-muted">載入題目中…</p>;
+    else if (item.kind === "quiz" ? !quizQuery.data : !cardQuery.data?.result) body = <p className="mt-2 text-xs text-muted">題目已刪除或載入失敗，去筆記頁查看。</p>;
     else {
       try {
         if (item.kind === "quiz") {
-          const qs = JSON.parse(gen.data.result) as QuizQ[];
+          const qs = (quizQuery.data?.items ?? []) as QuizQ[];
           const q = qs[item.qIndex];
           body = !q ? (
             <p className="mt-2 text-xs text-muted">題號越界，該卡下次不會再出現。</p>
@@ -107,10 +117,10 @@ export function ReviewAnswerRow({ item, onAnswered }: { item: DueItem; onAnswere
                 <button
                   key={oi}
                   disabled={done !== null}
-                  onClick={() => answerQuiz(q, oi)}
-                  aria-pressed={done !== null && oi === q.answer}
+                  onClick={() => answerQuiz(oi)}
+                  aria-pressed={done !== null && oi === answer}
                   className={`rounded-md border px-3 py-2 text-left text-sm ${
-                    done !== null && oi === q.answer
+                    done !== null && oi === answer
                       ? "border-accent bg-accent-soft font-semibold"
                       : done !== null && done === false
                         ? "border-line bg-card opacity-70"
@@ -129,7 +139,7 @@ export function ReviewAnswerRow({ item, onAnswered }: { item: DueItem; onAnswere
             </div>
           );
         } else {
-          const cards = JSON.parse(gen.data.result) as CardQ[];
+          const cards = JSON.parse(cardQuery.data?.result ?? "[]") as CardQ[];
           const c = cards[item.qIndex];
           body = !c ? (
             <p className="mt-2 text-xs text-muted">題號越界，該卡下次不會再出現。</p>

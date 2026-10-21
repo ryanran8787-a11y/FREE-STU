@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { flashcardCount, quizCount } from "./counts";
+import { gradeQuiz, parseQuizItems, stripQuizForInteract } from "./quiz";
 import { headParagraphs, splitParagraphs, extractSourceMap } from "./paras";
 import { searchNotes, tokenize } from "./retrieval";
 import { deleteNodeFromMd, parseHeadings, renameNodeInMd } from "./mindmap";
@@ -19,6 +20,31 @@ describe("counts", () => {
   it("less/more 檔位有不同縮放", () => {
     expect(flashcardCount(6000, "less")).toBeLessThan(flashcardCount(6000, "standard"));
     expect(flashcardCount(6000, "more")).toBeGreaterThan(flashcardCount(6000, "standard"));
+  });
+});
+
+describe("quiz（Top-1 卡片協議）", () => {
+  const items = [
+    { question: "Q1", options: ["a", "b", "c"], answer: 0, explanation: "解1" },
+    { question: "Q2", options: ["a", "b"], answer: 1 },
+  ];
+  it("strip 去 answer/explanation，只留 question/options", () => {
+    expect(stripQuizForInteract(items)).toEqual([
+      { question: "Q1", options: ["a", "b", "c"] },
+      { question: "Q2", options: ["a", "b"] },
+    ]);
+    expect(JSON.stringify(stripQuizForInteract(items))).not.toContain("answer");
+  });
+  it("grade 精確匹配；越界 fail-closed", () => {
+    expect(gradeQuiz(items, 0, 0)).toEqual({ correct: true, answer: 0 });
+    expect(gradeQuiz(items, 0, 1)).toEqual({ correct: false, answer: 0 });
+    expect(gradeQuiz(items, 99, 0)).toEqual({ correct: false, answer: -1 });
+    expect(gradeQuiz(items, 0, 99)).toEqual({ correct: false, answer: 0 });
+  });
+  it("parse 髒資料回空陣列", () => {
+    expect(parseQuizItems(null)).toEqual([]);
+    expect(parseQuizItems("not json")).toEqual([]);
+    expect(parseQuizItems("{}")).toEqual([]);
   });
 });
 

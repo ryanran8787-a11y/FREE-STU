@@ -1,9 +1,9 @@
-// 複習卡持久化：排程深模組（A2）。
+// 複習卡持久化：排程深模組（A2；T3-2 走四檔 SM-2 增量狀態）。
 // 介面只有兩個：recordAttempt（attempt.log 呼叫）與 listDue（review.queue 呼叫）。
-// queue.ts 的純函數（scheduleOne）是排程規則引擎，這裡只管「讀寫 ReviewCard」＋ lazy backfill。
+// queue.ts 的純函數（scheduleSm2 增量一步 / replaySm2 歷史重播）是排程規則引擎，這裡只管「讀寫 ReviewCard」＋ lazy backfill。
 // O(due)：queue 只掃「到期卡」（dueAt 索引），不掃 Attempt 全表；未到期卡靠 recordAttempt 的 upsert 維護。
 import { db } from "@/lib/db";
-import { scheduleOne, type AttemptEvent } from "@/server/review/queue";
+import { ratingOf, replaySm2, scheduleSm2, type AttemptEvent } from "@/server/review/queue";
 
 type Conf = "high" | "med" | "low";
 const conf = (c: string): Conf => (c === "high" || c === "low" ? c : "med");
@@ -84,7 +84,9 @@ export type DueCard = {
 /**
  * 作答後 upsert 複習卡：一題一行（genId,qIndex）唯一。
  * - qIndex 越界（題目解析失敗/索引不存在）→ quarantine：不建卡，回 false（Attempt 照寫）。
- * - interval/due 由 scheduleOne（全歷史事件）算出；lapses = 歷史答錯次數。
+ * - 增量 SM-2：讀卡上 interval/ease/streak/lapses/reviewCount 當 state，
+ *   用 ratingOf(correct, confidence) 走 scheduleSm2 一步（冷啟動預設 interval=1/ease=2.5）。
+ * - 舊卡（T3-2 遷移前、reviewCount=0 但有歷史作答）首次走增量時，先用 replaySm2 重播歷史再走一步。
  */
 export async function recordAttempt(o: {
   genId: string;
@@ -92,20 +94,36 @@ export async function recordAttempt(o: {
   correct: boolean;
   confidence: Conf;
   at?: number;
+  /**
+   * 當次 attempt.log 剛寫入的 Attempt id。
+   * 遷移重播必須排除它：attempt.log 是「先寫 Attempt、再呼叫這裡」，
+   * 只用 createdAt < now 擋不住（now 晚幾毫秒），當次會被重播成兩步。
+   */
+  attemptId?: string;
 }): Promise<{ card: boolean }> {
   const gen = await db.generation.findUnique({ where: { id: o.genId } });
   if (!gen || (gen.type !== "quiz" && gen.type !== "flashcards")) return { card: false };
   const question = parseOneQuestion(gen.result, o.qIndex);
   if (question === null) return { card: false }; // quarantine：越界不建卡
   const now = o.at ?? Date.now();
-  const history = await db.attempt.findMany({
-    where: { genId: o.genId, qIndex: o.qIndex },
-    orderBy: { createdAt: "asc" },
-  });
-  const events: AttemptEvent[] = history.map((a) => ({ correct: a.correct, confidence: conf(a.confidence), at: a.createdAt.getTime() }));
-  events.push({ correct: o.correct, confidence: o.confidence, at: now });
-  const s = scheduleOne(events, now);
-  const lapses = events.filter((e) => !e.correct).length;
+  const rating = ratingOf(o.correct, o.confidence);
+  const prev = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: o.genId, qIndex: o.qIndex } } });
+  let state = prev
+    ? { intervalDays: prev.intervalDays, ease: prev.ease, streak: prev.streak, lapses: prev.lapses, reviewCount: prev.reviewCount }
+    : {};
+  // 舊卡遷移：卡上有 reviewCount=0 但 Attempt 有歷史 → 當次作答已由 attempt.log 先寫入，
+  // 需把「當次之前」的歷史重播成 state，再走增量一步（避免當次被算兩次）。
+  if (prev && prev.reviewCount === 0) {
+    const hist = await db.attempt.findMany({
+      where: { genId: o.genId, qIndex: o.qIndex },
+      orderBy: { createdAt: "asc" },
+    });
+    const prior: AttemptEvent[] = hist
+      .filter((a) => (o.attemptId ? a.id !== o.attemptId : true) && a.createdAt.getTime() < now)
+      .map((a) => ({ correct: a.correct, confidence: conf(a.confidence), at: a.createdAt.getTime() }));
+    if (prior.length > 0) state = replaySm2(prior) ?? {};
+  }
+  const s = scheduleSm2(state, rating, now);
   await db.reviewCard.upsert({
     where: { genId_qIndex: { genId: o.genId, qIndex: o.qIndex } },
     create: {
@@ -115,16 +133,22 @@ export async function recordAttempt(o: {
       qIndex: o.qIndex,
       question,
       intervalDays: s.intervalDays,
+      ease: s.ease,
+      streak: s.streak,
+      reviewCount: s.reviewCount,
       dueAt: new Date(s.nextDueAt),
-      lapses,
+      lapses: s.lapses,
     },
     update: {
       noteId: gen.noteId,
       kind: gen.type,
       question,
       intervalDays: s.intervalDays,
+      ease: s.ease,
+      streak: s.streak,
+      reviewCount: s.reviewCount,
       dueAt: new Date(s.nextDueAt),
-      lapses,
+      lapses: s.lapses,
     },
   });
   return { card: true };
@@ -176,17 +200,18 @@ export async function listDue(limit: number, now = Date.now()): Promise<{ items:
       confidence: conf(a.confidence),
       at: a.createdAt.getTime(),
     }));
-    const s = scheduleOne(evts, now);
-    const lapses = evts.filter((e) => !e.correct).length;
+    const s = replaySm2(evts);
     await db.reviewCard.upsert({
       where: { genId_qIndex: { genId: m.genId, qIndex: m.qIndex } },
       create: {
         genId: m.genId, noteId: g.noteId, kind: g.type, qIndex: m.qIndex, question,
-        intervalDays: s.intervalDays, dueAt: new Date(s.nextDueAt), lapses,
+        intervalDays: s?.intervalDays ?? 0, ease: s?.ease ?? 2.5, streak: s?.streak ?? 0,
+        reviewCount: s?.reviewCount ?? 0, dueAt: new Date(s?.nextDueAt ?? now), lapses: s?.lapses ?? 0,
       },
       update: {
         noteId: g.noteId, kind: g.type, question,
-        intervalDays: s.intervalDays, dueAt: new Date(s.nextDueAt), lapses,
+        intervalDays: s?.intervalDays ?? 0, ease: s?.ease ?? 2.5, streak: s?.streak ?? 0,
+        reviewCount: s?.reviewCount ?? 0, dueAt: new Date(s?.nextDueAt ?? now), lapses: s?.lapses ?? 0,
       },
     });
   }
@@ -270,10 +295,12 @@ export async function listDue(limit: number, now = Date.now()): Promise<{ items:
       orderBy: { createdAt: "asc" },
     });
     const events: AttemptEvent[] = hist.map((a) => ({ correct: a.correct, confidence: conf(a.confidence), at: a.createdAt.getTime() }));
-    const s = scheduleOne(events, now);
+    const last = hist[hist.length - 1];
+    const lastCorrect = last?.correct ?? true;
+    const lastConfidence = last ? conf(last.confidence) : null;
     const r = reasonOf({
       events, nextDueAt: c.dueAt.getTime(),
-      lastCorrect: s.lastCorrect, lastConfidence: s.lastConfidence, now,
+      lastCorrect, lastConfidence, now,
     });
     out.push({
       noteId: c.noteId,
@@ -285,8 +312,8 @@ export async function listDue(limit: number, now = Date.now()): Promise<{ items:
       intervalDays: c.intervalDays,
       nextDueAt: c.dueAt.getTime(),
       overdueDays: r.overdueDays,
-      streak: s.streak,
-      lastCorrect: s.lastCorrect,
+      streak: c.streak,
+      lastCorrect,
       priority: r.priority,
       reason: r.reason,
     });

@@ -13,6 +13,10 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci --legacy-peer-deps
+      # app/generated/prisma 與 .next/types 都被 gitignore，fresh clone 不存在：
+      # 少了這兩步，typecheck 會紅在 Cannot find module '@/app/generated/prisma/client'
+      # 與 Cannot find name 'LayoutProps'（Next 16 的 route type helper）。
+      - run: npm run prepare:codegen
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

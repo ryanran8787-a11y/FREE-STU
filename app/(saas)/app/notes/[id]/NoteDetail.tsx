@@ -315,7 +315,7 @@ export function NoteDetail({ id, initialGenId }: { id: string; initialGenId?: st
             activeGen?.type === "quiz" && activeGen.result ? (
               <div className="flex flex-col gap-3">
                 <GenSelector gens={doneGens.filter((g) => g.type === "quiz")} selected={selectedGenId} onSelect={setSelectedGenId} latest={latestByType.get("quiz")?.id ?? null} />
-                <Quiz result={activeGen.result} title={noteTitle} genId={activeGen.id} />
+                <Quiz title={noteTitle} genId={activeGen.id} />
                 <ConflictsCard genId={activeGen.id} conflicts={readConflicts(activeGen.options)} onRegen={regenQuiz} />
               </div>
             ) : (
