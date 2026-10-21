@@ -1,7 +1,13 @@
 // 搜尋索引的整合測試：跑在獨立的臨時 SQLite 上（不碰 dev.db、不需要 .env），
 // 因此 CI 也能跑。這裡驗的是純函數測試蓋不到的部分——FTS5 的 SQL 契約：
 // bigram 經過 unicode61 後是否還完整、中文兩字查詢是否命中、bm25 排序、惡意語法是否安全。
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+//
+// 順序獨立性（重要）：每個 case 之前都重設回「三筆基準筆記 + 索引同步」的已知起點。
+// 這個檔原本有兩顆順序耦合地雷：
+//   1) ensureFts／rebuildAll 硬編碼 toBe(3)，但別的 case 留下的 n-new 還在 → 數到 4。
+//   2) n-new 的 UPDATE／removeNote case 依賴前一個 case 先建好 n-new，順序一換就改到 0 列。
+// 現在每個 case 自建前置（beforeEach 重設），不靠其他 case 的副作用。
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -48,17 +54,45 @@ async function addNote(id: string, title: string, rawText: string, tags = ""): P
   );
 }
 
+/** 每個 case 的已知起點：三筆基準筆記，且索引已同步。 */
+const BASELINE = [
+  {
+    id: "n-ml",
+    title: "機器學習導論",
+    rawText: "機器學習是人工智慧的一個分支，深度學習使用神經網路。監督式學習需要標註資料。",
+    tags: "資訊,AI",
+  },
+  { id: "n-bio", title: "生物第三章", rawText: "細胞是生命的基本單位，粒線體負責產生能量。", tags: "生物,考試" },
+  { id: "n-eng", title: "English Notes", rawText: "Machine learning is a branch of artificial intelligence.", tags: "" },
+];
+
+async function noteCount(): Promise<number> {
+  const [{ c }] = await db.$queryRawUnsafe<{ c: bigint }[]>(`SELECT count(*) AS c FROM "Note"`);
+  return Number(c);
+}
+
+async function ftsCount(): Promise<number> {
+  const [{ c }] = await db.$queryRawUnsafe<{ c: bigint }[]>(`SELECT count(*) AS c FROM NoteFts`);
+  return Number(c);
+}
+
+/** 重設 DB 與索引到基準狀態（清資料 → 建表 → 放回三筆 → 重建索引）。 */
+async function resetFixture(): Promise<void> {
+  await db.$executeRawUnsafe(`DELETE FROM "Generation"`);
+  await db.$executeRawUnsafe(`DELETE FROM "Note"`);
+  await ensureFts(); // 首次呼叫會建 NoteFts 表（Note/NoteFts 皆空 → 不觸發回填）
+  await db.$executeRawUnsafe(`DELETE FROM NoteFts`);
+  for (const n of BASELINE) await addNote(n.id, n.title, n.rawText, n.tags);
+  await rebuildAll();
+}
+
 beforeAll(async () => {
   await fs.rm(DB_FILE, { force: true });
   for (const sql of DDL) await db.$executeRawUnsafe(sql);
-  await addNote(
-    "n-ml",
-    "機器學習導論",
-    "機器學習是人工智慧的一個分支，深度學習使用神經網路。監督式學習需要標註資料。",
-    "資訊,AI",
-  );
-  await addNote("n-bio", "生物第三章", "細胞是生命的基本單位，粒線體負責產生能量。", "生物,考試");
-  await addNote("n-eng", "English Notes", "Machine learning is a branch of artificial intelligence.", "");
+});
+
+beforeEach(async () => {
+  await resetFixture();
 });
 
 afterAll(async () => {
@@ -76,16 +110,27 @@ afterAll(async () => {
 });
 
 describe("ensureFts", () => {
-  it("首次呼叫建表並回填既有筆記", async () => {
+  it("索引與 Note 同步：筆數相等，且每筆基準筆記都有一列", async () => {
     await ensureFts();
-    const [{ c }] = await db.$queryRawUnsafe<{ c: bigint }[]>(`SELECT count(*) AS c FROM NoteFts`);
-    expect(Number(c)).toBe(3);
+    expect(await ftsCount()).toBe(await noteCount());
+    for (const n of BASELINE) {
+      const [{ c }] = await db.$queryRawUnsafe<{ c: bigint }[]>(`SELECT count(*) AS c FROM NoteFts WHERE noteId = ?`, n.id);
+      expect(Number(c)).toBe(1);
+    }
   });
 
-  it("重複呼叫不會重複建表（共用同一個 promise）", async () => {
+  it("重複／併發呼叫不會重複建列（共用同一個 promise）", async () => {
     await Promise.all([ensureFts(), ensureFts(), ensureFts()]);
-    const [{ c }] = await db.$queryRawUnsafe<{ c: bigint }[]>(`SELECT count(*) AS c FROM NoteFts`);
-    expect(Number(c)).toBe(3);
+    expect(await ftsCount()).toBe(await noteCount());
+  });
+
+  it("索引落後於資料時，rebuildAll 依 Note 現況整庫回填（ensureFts 的同步路徑）", async () => {
+    // 直接寫 Note（繞過 indexNote）模擬「有人直接動 DB」造成的索引落後
+    await addNote("n-late", "熱力學", "熱力學第二定律的核心是熵。");
+    expect(await searchNotes("定律")).toEqual([]); // 還沒進索引
+    const n = await rebuildAll();
+    expect(n).toBe(await noteCount()); // 回填筆數 = 當下 Note 數（不硬編碼）
+    expect((await searchNotes("定律")).map((h) => h.noteId)).toContain("n-late");
   });
 });
 
@@ -111,6 +156,7 @@ describe("searchNotes：中文子字串檢索", () => {
   });
 
   it("回傳標題、摘要與生成數", async () => {
+    // 自建前置：本 case 需要 n-ml 有恰好一筆 Generation（beforeEach 已清空 Generation）
     await db.$executeRawUnsafe(
       `INSERT INTO "Generation"("id", "type", "status", "noteId") VALUES ('g1', 'quiz', 'done', 'n-ml')`,
     );
@@ -165,6 +211,9 @@ describe("indexNote／removeNote／rebuildAll", () => {
   });
 
   it("更新內容後索引跟著更新，舊詞不再命中", async () => {
+    // 自建前置：不依賴「新增筆記後可立即搜到」先跑過
+    await addNote("n-new", "化學原理", "莫耳是化學計量的基本單位。");
+    await indexNote("n-new");
     await db.$executeRawUnsafe(`UPDATE "Note" SET "rawText" = ? WHERE "id" = 'n-new'`, "電解質溶液會導電。");
     await indexNote("n-new");
     expect((await searchNotes("電解質")).map((h) => h.noteId)).toContain("n-new");
@@ -172,21 +221,27 @@ describe("indexNote／removeNote／rebuildAll", () => {
   });
 
   it("removeNote 後不再命中", async () => {
+    // 自建前置：同上，自己建自己刪
+    await addNote("n-new", "化學原理", "莫耳是化學計量的基本單位。");
+    await indexNote("n-new");
     // 真實刪除流程：先刪 Note row（cascade 掉 Generation）再清索引
     await db.$executeRawUnsafe(`DELETE FROM "Note" WHERE "id" = 'n-new'`);
     await removeNote("n-new");
-    expect(await searchNotes("電解質")).toEqual([]);
+    expect(await searchNotes("莫耳")).toEqual([]);
+    expect(await ftsCount()).toBe(await noteCount()); // 沒有留下孤兒索引列
   });
 
   it("indexNote 對不存在的筆記等同移除（不拋錯）", async () => {
     await expect(indexNote("n-ghost")).resolves.toBeUndefined();
+    expect(await ftsCount()).toBe(await noteCount()); // 不會多出孤兒列
   });
 
   it("rebuildAll 重建後筆數正確且檢索仍可用", async () => {
+    // 斷言「重建筆數 = 當下 Note 數」，不寫死 3：多插一筆筆記也不該讓這條紅
+    const expected = await noteCount();
     const n = await rebuildAll();
-    expect(n).toBe(3);
-    const [{ c }] = await db.$queryRawUnsafe<{ c: bigint }[]>(`SELECT count(*) AS c FROM NoteFts`);
-    expect(Number(c)).toBe(3);
+    expect(n).toBe(expected);
+    expect(await ftsCount()).toBe(expected);
     expect((await searchNotes("學習")).map((h) => h.noteId)).toContain("n-ml");
   });
 });
