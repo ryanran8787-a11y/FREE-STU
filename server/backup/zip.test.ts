@@ -5,13 +5,37 @@ import path from "path";
 import { afterAll, describe, expect, it } from "vitest";
 import { zipFiles } from "./zip";
 
-/** 用 Windows 內建 tar（libarchive，支援 zip）解開驗證——零 npm 依賴的真實解壓測試。 */
-async function unzipWithTar(buf: Buffer, intoDir: string): Promise<string[]> {
+/**
+ * 用系統工具真實解壓驗證（零 npm 依賴）。zip 不是核心功能，這條只當「有工具就順手驗」：
+ * - Windows 的 tar 是 libarchive，支援 zip；
+ * - Linux 的 GNU tar 不支援 zip（"This does not look like a tar archive"），改用 unzip 或 python3。
+ * 全部不可用時回 null，呼叫端 skip —— 不讓「機器沒裝解壓工具」變成 CI 紅燈。
+ */
+function unzipWithSystemTool(zipPath: string, outDir: string): boolean {
+  const candidates: [string, string[]][] =
+    process.platform === "win32"
+      ? [["tar", ["-xf", zipPath, "-C", outDir]]]
+      : [
+          ["unzip", ["-q", "-o", zipPath, "-d", outDir]],
+          ["python3", ["-m", "zipfile", "-e", zipPath, outDir]],
+        ];
+  for (const [cmd, args] of candidates) {
+    try {
+      execFileSync(cmd, args, { stdio: "pipe" });
+      return true;
+    } catch {
+      // 換下一個工具
+    }
+  }
+  return false;
+}
+
+async function unzipTo(buf: Buffer, intoDir: string): Promise<string[] | null> {
   const zipPath = path.join(intoDir, "test.zip");
   await fs.writeFile(zipPath, buf);
   const outDir = path.join(intoDir, "out");
   await fs.mkdir(outDir, { recursive: true });
-  execFileSync("tar", ["-xf", zipPath, "-C", outDir], { stdio: "pipe" });
+  if (!unzipWithSystemTool(zipPath, outDir)) return null;
   const files: string[] = [];
   async function walk(dir: string, prefix: string) {
     for (const e of await fs.readdir(dir, { withFileTypes: true })) {
@@ -45,11 +69,16 @@ describe("zipFiles", () => {
     expect(entryCount).toBe(2);
   });
 
-  it("真實解壓：tar -xf 能解開且內容一致（Windows libarchive）", async () => {
+  it("真實解壓：系統工具能解開且內容一致", async (ctx) => {
     await fs.mkdir(tmp, { recursive: true });
     const fixedDate = new Date("2026-10-18T15:30:00Z");
     const buf = zipFiles(entries(fixedDate));
-    const files = await unzipWithTar(buf, tmp);
+    const files = await unzipTo(buf, tmp);
+    if (files === null) {
+      // 這台機器沒有能解 zip 的工具（如 GNU tar + 無 unzip/python3）：跳過，不算失敗。
+      ctx.skip("沒有可用的解壓工具，略過真實解壓驗證");
+      return;
+    }
     expect(files.sort()).toEqual(["database.db", "podcasts/gen-abc.mp3"]);
     const db = await fs.readFile(path.join(tmp, "out", "database.db"), "utf-8");
     expect(db).toBe("db-bytes-0123456789");
