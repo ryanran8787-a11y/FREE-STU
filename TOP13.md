@@ -18,8 +18,8 @@
 - [x] T1-4：舊 `correct` 直傳相容（flashcards 自評保留；quiz 若同時傳以 server 算為準）——T1-1 已內含，無需另改
 - [x] T3-1：`queue.ts` 四檔 `scheduleSm2(state, rating)` 純函數（Again/Hard/Good/Easy + ease/streak/lapses）+ `ratingOf()` 映射
 - [x] T3-2：`ReviewCard` 加 `ease/streak/reviewCount` 欄位 + migration，`recordAttempt` 改走四檔（confidence→rating 映射）
-- [ ] T3-3：新舊排程測試（queue.test.ts + card.test.ts 補四檔 case）
-- [ ] 收尾：`vitest` + `tsc` 全綠 → commit/push
+- [x] T3-3：新舊排程測試（queue.test.ts + card.test.ts 補四檔 case）—— commit `40e0880`，+18 case，vitest 126/126 綠
+- [x] 收尾：`vitest` + `tsc` 全綠 → commit `40e0880`（未 push，待使用者決定）
 
 ## 設計（鎖定，不再改）
 - Top-1：新增 `lib/quiz.ts`（純函數，可前後端共用）：
