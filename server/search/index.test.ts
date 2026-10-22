@@ -124,7 +124,9 @@ describe("ensureFts", () => {
     expect(await ftsCount()).toBe(await noteCount());
   });
 
-  it("索引落後於資料時，rebuildAll 依 Note 現況整庫回填（ensureFts 的同步路徑）", async () => {
+  it("索引落後於資料時，rebuildAll 依 Note 現況整庫回填", async () => {
+    // 這條測的是 rebuildAll 本身（ensureFts 的同步分支由 ensure-fts.test.ts 專測，
+    // 因為 ftsReady 的 module 級快取讓它在本檔的 fixture 下走不到）。
     // 直接寫 Note（繞過 indexNote）模擬「有人直接動 DB」造成的索引落後
     await addNote("n-late", "熱力學", "熱力學第二定律的核心是熵。");
     expect(await searchNotes("定律")).toEqual([]); // 還沒進索引

@@ -18,5 +18,9 @@ export default defineConfig({
   test: {
     pool: "forks",
     include: ["lib/**/*.test.ts", "server/**/*.test.ts"],
+    // 測試會碰真實 SQLite，磁碟尖峰時單一 case 可能超過預設 5 秒
+    // （實測：A 槽慢速碟上 card.test.ts 偶發 timeout，非邏輯失敗）。
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
   },
 });
