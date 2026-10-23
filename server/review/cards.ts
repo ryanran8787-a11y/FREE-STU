@@ -261,6 +261,23 @@ export async function listDue(limit: number, now = Date.now()): Promise<{ items:
     ? []
     : await db.note.findMany({ where: { id: { in: noteIds } }, select: { id: true, title: true } });
   const titleOf = new Map(notes.map((n) => [n.id, n.title]));
+  // 批次撈這批到期卡的作答歷史（原本在迴圈內逐卡查 → 最多 500 次查詢的 N+1）。
+  // 照本檔上方 backfill 的 byQ Map 模式：一次撈齊、按 genId:qIndex 分組，迴圈內只查 Map。
+  // 行為不變：每組仍按 createdAt 升序（events 的順序決定 last 是哪一筆）。
+  const dueGenIds = [...new Set(quizDue.map((c) => c.genId))];
+  const dueAttempts = dueGenIds.length === 0
+    ? []
+    : await db.attempt.findMany({
+        where: { genId: { in: dueGenIds } },
+        orderBy: { createdAt: "asc" },
+      });
+  const histByQ = new Map<string, typeof dueAttempts>();
+  for (const a of dueAttempts) {
+    const k = `${a.genId}:${a.qIndex}`;
+    const arr = histByQ.get(k) ?? [];
+    arr.push(a);
+    histByQ.set(k, arr);
+  }
   const out: DueCard[] = [];
   for (const c of dueCards) {
     if (orphanGenIds.includes(c.genId)) continue;
@@ -296,10 +313,7 @@ export async function listDue(limit: number, now = Date.now()): Promise<{ items:
       await db.reviewCard.delete({ where: { id: c.id } }).catch(() => undefined);
       continue; // quarantine：生成物縮水後越界的卡直接清掉
     }
-    const hist = await db.attempt.findMany({
-      where: { genId: c.genId, qIndex: c.qIndex },
-      orderBy: { createdAt: "asc" },
-    });
+    const hist = histByQ.get(`${c.genId}:${c.qIndex}`) ?? [];
     const events: AttemptEvent[] = hist.map((a) => ({ correct: a.correct, confidence: conf(a.confidence), at: a.createdAt.getTime() }));
     const last = hist[hist.length - 1];
     const lastCorrect = last?.correct ?? true;
