@@ -14,9 +14,17 @@ describe("localDayKey：本地時區切日", () => {
   it("凌晨 01:30 算「當天」，不是前一天（toISOString 會錯的那個 case）", () => {
     const d = new Date(2026, 9, 23, 1, 30, 0); // 本地 2026-10-23 01:30
     expect(localDayKey(d)).toBe("2026-10-23");
-    // 對照組：證明用 UTC 切日真的會錯（這個 bug 的證據）
+    // 對照組：證明「用 UTC 切日會錯」——但這個 bug 只在非 UTC 時區才表現出來。
+    // CI 是 ubuntu（UTC），此時 toISOString 與 localDayKey 必然同值，
+    // 無條件寫 not.toBe 會讓 CI 紅。所以只在有非零 offset 的時區斷言，
+    // 在 UTC 下改為驗證「兩者一致」（等同確認 UTC 時區沒有這個問題）。
     const utcKey = d.toISOString().slice(0, 10);
-    expect(utcKey).not.toBe(localDayKey(d));
+    const offsetMinutes = d.getTimezoneOffset();
+    if (offsetMinutes !== 0) {
+      expect(utcKey).not.toBe(localDayKey(d));
+    } else {
+      expect(utcKey).toBe(localDayKey(d));
+    }
   });
 
   it("本地 00:00 與 23:59 都算同一天", () => {
