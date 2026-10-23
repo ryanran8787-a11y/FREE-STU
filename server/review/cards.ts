@@ -108,8 +108,14 @@ export async function recordAttempt(o: {
   const now = o.at ?? Date.now();
   const rating = ratingOf(o.correct, o.confidence);
   const prev = await db.reviewCard.findUnique({ where: { genId_qIndex: { genId: o.genId, qIndex: o.qIndex } } });
+  // intervalDays<=0 一律視同「冷啟動」（不把 0 當成一個有效間隔往下算）。
+  // 為什麼需要：lazy backfill 建的冷卡是 intervalDays=0，若直接餵給 scheduleSm2，
+  // Hard 會走 max(1, 0×1.2)=1.0 天；而「還沒建卡」的冷啟動走預設 interval=1 → 1.2 天。
+  // 同一題、同一作答，只因「有沒有先開過複習頁」而得到兩種結果——這裡統一成冷啟動語義，
+  // 讓 1.0/1.2 的歧義消失（queue.ts 的公式不動，改呼叫端）。
+  const prevInterval = prev && prev.intervalDays > 0 ? prev.intervalDays : undefined;
   let state = prev
-    ? { intervalDays: prev.intervalDays, ease: prev.ease, streak: prev.streak, lapses: prev.lapses, reviewCount: prev.reviewCount }
+    ? { intervalDays: prevInterval, ease: prev.ease, streak: prev.streak, lapses: prev.lapses, reviewCount: prev.reviewCount }
     : {};
   // 舊卡遷移：卡上有 reviewCount=0 但 Attempt 有歷史 → 當次作答已由 attempt.log 先寫入，
   // 需把「當次之前」的歷史重播成 state，再走增量一步（避免當次被算兩次）。

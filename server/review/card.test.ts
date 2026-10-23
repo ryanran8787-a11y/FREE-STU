@@ -11,7 +11,13 @@ const DB_URL = `file:${DB_FILE.replace(/\\/g, "/")}`;
 
 vi.mock("@/lib/db", async () => {
   const { PrismaClient } = await import("@/app/generated/prisma/client");
-  return { db: new PrismaClient({ datasources: { db: { url: DB_URL } } }) };
+  return {
+    db: new PrismaClient({
+      datasources: { db: { url: DB_URL } },
+      // 開 query 事件：listDue 的 N+1 守門測試要數「撈 Attempt 的次數」。
+      log: [{ emit: "event", level: "query" }],
+    }),
+  };
 });
 
 const { db } = await import("@/lib/db");
@@ -82,6 +88,12 @@ const QUIZ = JSON.stringify([
   { question: "Q1 第一題", options: ["a", "b", "c"], answer: 0 },
   { question: "Q2 第二題", options: ["a", "b", "c"], answer: 1 },
 ]);
+/** 三題測驗：T3-3 與 P1 的 N+1 守門共用。 */
+const QUIZ3 = JSON.stringify([
+  { question: "A1 第一題", options: ["a", "b", "c"], answer: 0 },
+  { question: "A2 第二題", options: ["a", "b", "c"], answer: 1 },
+  { question: "A3 第三題", options: ["a", "b", "c"], answer: 2 },
+]);
 
 beforeAll(async () => {
   await fs.rm(DB_FILE, { force: true });
@@ -150,12 +162,6 @@ describe("A2：attempt.log → review.queue 經 ReviewCard 持久化", () => {
 });
 
 describe("T3-3：四檔 SM-2 持久化（recordAttempt 走 attempt.log → review.queue）", () => {
-  const QUIZ3 = JSON.stringify([
-    { question: "A1 第一題", options: ["a", "b", "c"], answer: 0 },
-    { question: "A2 第二題", options: ["a", "b", "c"], answer: 1 },
-    { question: "A3 第三題", options: ["a", "b", "c"], answer: 2 },
-  ]);
-
   // 順序獨立性：每個 case 自建自己的 generation（不共用 beforeAll 的固定 id）。
   // 原因：review.queue() 的 lazy backfill 會替「所有」done 的 quiz gen 補冷卡，
   // 只要別的 case 先呼叫過 queue，共用 gen 就會被提前建卡，Hard 的 ×1.2 也會從 1.2 變 1.0。
@@ -211,10 +217,12 @@ describe("T3-3：四檔 SM-2 持久化（recordAttempt 走 attempt.log → revie
     expect(card!.reviewCount).toBe(1);
   });
 
-  it("低信心答對 → Hard（已有冷卡）：interval 1.0 天（現況釘住，見已知不一致）", async () => {
-    // cards.ts 的 state 直接吃卡上的 intervalDays=0，Hard 走 max(1, 0×1.2)=1.0；
-    // 冷啟動（無卡）則是 1.2。同一輸入因「有沒有先開過複習頁（lazy backfill 建冷卡）」而不同。
-    // 本 case 把「有冷卡」這條分支（cards.ts 的 prior.length === 0 路徑）明確釘住，避免日後悄悄漂移。
+  it("低信心答對 → Hard（已有冷卡）：與冷啟動一致，都是 1.2 天（P1 修好 1.0/1.2 不一致）", async () => {
+    // 修前：cards.ts 直接吃卡上的 intervalDays=0，Hard 走 max(1, 0×1.2)=1.0；
+    // 冷啟動（無卡）走預設 interval=1 → 1.2。同一輸入因「有沒有先開過複習頁
+    // （lazy backfill 建冷卡）」而得到兩種結果。
+    // 修後：cards.ts 把 intervalDays<=0 視同冷啟動，兩條路徑都走 1.2。
+    // 本 case 與上一條（冷啟動）配對，守住「兩條路徑結果相同」這個契約。
     const genId = await freshGen();
     await db.reviewCard.create({
       data: {
@@ -225,7 +233,7 @@ describe("T3-3：四檔 SM-2 持久化（recordAttempt 走 attempt.log → revie
     await caller.attempt.log({ genId, qIndex: 0, picked: 0, correct: true, confidence: "low" });
     const card = await cardOf(genId, 0);
     expect(card).not.toBeNull();
-    expect(card!.intervalDays).toBeCloseTo(1.0, 4);
+    expect(card!.intervalDays).toBeCloseTo(1.2, 4);
     expect(card!.intervalDays).toBeLessThan(3); // 仍不是 Good 的 3 天起步
     expect(card!.ease).toBeCloseTo(2.35, 5);
     expect(card!.streak).toBe(0);
@@ -289,6 +297,59 @@ describe("T3-3：四檔 SM-2 持久化（recordAttempt 走 attempt.log → revie
     expect(card!.streak).toBe(2);
     expect(card!.reviewCount).toBe(2);
     expect(card!.ease).toBeCloseTo(2.5, 5);
+  });
+});
+
+describe("P1：listDue 的 N+1 守門（撈 Attempt 必須是批次，不是逐卡）", () => {
+  it("到期卡從 1 張增到多張，撈 Attempt 的查詢次數不隨卡片數成長", async () => {
+    /** 建立 n 張到期卡（各自有作答歷史），回傳它們的 genId。 */
+    async function seedDueCards(n: number, tag: string): Promise<void> {
+      for (let i = 0; i < n; i++) {
+        const genId = `${tag}-${i}`;
+        await db.generation.create({ data: { id: genId, type: "quiz", status: "done", result: QUIZ3, noteId: "n1" } });
+        await db.reviewCard.create({
+          data: {
+            genId, noteId: "n1", kind: "quiz", qIndex: 0, question: "A1 第一題",
+            intervalDays: 3, ease: 2.5, streak: 1, reviewCount: 1, lapses: 0,
+            dueAt: new Date(Date.now() - 60_000), // 已到期
+          },
+        });
+        await db.attempt.create({
+          data: { genId, noteId: "n1", kind: "quiz", qIndex: 0, picked: 0, correct: true, confidence: "med" },
+        });
+      }
+    }
+
+    /** 數一次 review.queue 期間「查 Attempt 表」的查詢次數（Prisma 產生的 SQL 用反引號包表名）。 */
+    async function countAttemptQueries(): Promise<number> {
+      let n = 0;
+      const onQuery = (e: { query: string }) => {
+        if (e.query.includes(".`Attempt`")) n++;
+      };
+      const client = db as unknown as { $on?: (ev: string, cb: (e: { query: string }) => void) => void };
+      // Prisma 的 query 事件是非同步發出的：註冊後要等事件送達才能讀計數，
+      // 不能呼叫完就立刻讀（會永遠是 0，測試形同虛設）。
+      client.$on?.("query", onQuery);
+      try {
+        await caller.review.queue({ limit: 100 });
+        await new Promise((r) => setTimeout(r, 100)); // 等 query 事件 flush
+      } finally {
+        const remove = (db as unknown as { $off?: (ev: string, cb: (e: { query: string }) => void) => void }).$off;
+        remove?.call(db, "query", onQuery);
+      }
+      return n;
+    }
+
+    await seedDueCards(1, "n1-case");
+    const one = await countAttemptQueries();
+
+    await seedDueCards(6, "n6-case");
+    const many = await countAttemptQueries();
+
+    // N+1 的形狀：每次查詢都會多 1 次，many 會是 one 的 7 倍左右。
+    // 批次化之後，撈 Attempt 的次數與到期卡數無關（固定 1 次批次查詢）。
+    expect(many).toBeLessThanOrEqual(one + 1);
+    expect(many).toBeLessThanOrEqual(2);
   });
 });
 
