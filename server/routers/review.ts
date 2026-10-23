@@ -2,6 +2,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { publicProcedure, router } from "@/server/trpc";
 import { listDue } from "@/server/review/cards";
+import { addLocalDays, localDayKey, startOfLocalDay } from "@/lib/local-day";
 
 export const reviewRouter = router({
   /** 複習與學習紀錄：每天答對率、信心校準、弱點主題（全 SQL，零 token） */
@@ -14,9 +15,11 @@ export const reviewRouter = router({
       orderBy: { createdAt: "asc" },
     });
     // 每天：答對率 + 平均信心（med=0.5, high=1, low=0）+ 作答數
+    // 切日一律用本地時區（localDayKey）：toISOString 是 UTC，台北凌晨 0–8 點的作答
+    // 會被算到前一天，導致每日曲線與 streak 整體錯位。
     const byDay = new Map<string, { total: number; correct: number; confSum: number }>();
     for (const a of attempts) {
-      const key = a.createdAt.toISOString().slice(0, 10);
+      const key = localDayKey(a.createdAt);
       const c = byDay.get(key) ?? { total: 0, correct: 0, confSum: 0 };
       c.total++;
       if (a.correct) c.correct++;
@@ -57,23 +60,21 @@ export const reviewRouter = router({
     const total = attempts.length;
     const correct = attempts.filter((a) => a.correct).length;
     const streak = (() => {
-      // 連續有作答的天數（到今天或昨天為止）
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      let d = new Date(today);
+      // 連續有作答的天數（到今天或昨天為止）。用本地日鍵，跟 byDay 的 key 同一個時區基準。
+      let d = startOfLocalDay(new Date());
       let n = 0;
       while (true) {
-        const key = d.toISOString().slice(0, 10);
+        const key = localDayKey(d);
         if (byDay.has(key)) {
           n++;
-          d.setDate(d.getDate() - 1);
+          d = addLocalDays(d, -1);
         } else {
           // 允許今天還沒作答
           if (n === 0) {
-            d.setDate(d.getDate() - 1);
-            if (byDay.has(d.toISOString().slice(0, 10))) {
+            d = addLocalDays(d, -1);
+            if (byDay.has(localDayKey(d))) {
               n++;
-              d.setDate(d.getDate() - 1);
+              d = addLocalDays(d, -1);
               continue;
             }
           }
