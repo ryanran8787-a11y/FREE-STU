@@ -145,6 +145,7 @@ prisma/{schema.prisma, migrations/（13 個，最新 sm2_four_grade）}
 - `DEEPTUTOR.md` —— DeepTutor 分析＋ HSHSA Top-5（§9）
 - `TOP13.md` —— Top-1＋Top-3 實作進度（每做一點記一點）
 - `LIST.md` —— 架構與功能清單；`HANDOFF.md` —— 舊會話交接（鐵律＋檔案地圖）
+- `REVIEW.md` —— P0+P1 批次審核歸檔（時區修復／Hard 一致性／N+1／Next 升級，含 UTC CI 地雷與 bisect 提醒）
 
 ## 授權
 
