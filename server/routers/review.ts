@@ -7,9 +7,8 @@ import { addLocalDays, localDayKey, startOfLocalDay } from "@/lib/local-day";
 export const reviewRouter = router({
   /** 複習與學習紀錄：每天答對率、信心校準、弱點主題（全 SQL，零 token） */
   summary: publicProcedure.input(z.object({ days: z.number().int().min(7).max(90).default(30) })).query(async ({ input }) => {
-    const since = new Date();
-    since.setDate(since.getDate() - input.days);
-    since.setHours(0, 0, 0, 0);
+    // 往前推 input.days 天的本地零點（與 byDay 的切日基準同源，統一走 local-day 工具）。
+    const since = startOfLocalDay(addLocalDays(new Date(), -input.days));
     const attempts = await db.attempt.findMany({
       where: { createdAt: { gte: since } },
       orderBy: { createdAt: "asc" },

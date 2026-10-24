@@ -326,16 +326,21 @@ describe("P1：listDue 的 N+1 守門（撈 Attempt 必須是批次，不是逐�
       const onQuery = (e: { query: string }) => {
         if (e.query.includes(".`Attempt`")) n++;
       };
-      const client = db as unknown as { $on?: (ev: string, cb: (e: { query: string }) => void) => void };
+      // 不用可選鏈：若 Prisma event API 漂移讓 $on 消失，計數會永遠 0，
+      // 而 0<=0 會讓下面的守門斷言照過（守門形同虛設）。這裡直接斷言 API 存在。
+      const client = db as unknown as {
+        $on: (ev: string, cb: (e: { query: string }) => void) => void;
+        $off?: (ev: string, cb: (e: { query: string }) => void) => void;
+      };
+      expect(typeof client.$on).toBe("function");
       // Prisma 的 query 事件是非同步發出的：註冊後要等事件送達才能讀計數，
       // 不能呼叫完就立刻讀（會永遠是 0，測試形同虛設）。
-      client.$on?.("query", onQuery);
+      client.$on("query", onQuery);
       try {
         await caller.review.queue({ limit: 100 });
         await new Promise((r) => setTimeout(r, 100)); // 等 query 事件 flush
       } finally {
-        const remove = (db as unknown as { $off?: (ev: string, cb: (e: { query: string }) => void) => void }).$off;
-        remove?.call(db, "query", onQuery);
+        client.$off?.("query", onQuery);
       }
       return n;
     }
@@ -346,10 +351,14 @@ describe("P1：listDue 的 N+1 守門（撈 Attempt 必須是批次，不是逐�
     await seedDueCards(6, "n6-case");
     const many = await countAttemptQueries();
 
-    // N+1 的形狀：每次查詢都會多 1 次，many 會是 one 的 7 倍左右。
-    // 批次化之後，撈 Attempt 的次數與到期卡數無關（固定 1 次批次查詢）。
+    // 先釘住 instrumentation 本身有效：真的收到查 Attempt 的事件。
+    // 沒有這條，event 掛不上時 one/many 都是 0，下面 0<=0+1 照過 → 守門是假的。
+    expect(one).toBeGreaterThanOrEqual(1);
+    expect(many).toBeGreaterThanOrEqual(1);
+    // N+1 的形狀：逐卡查時每次多 1 次，many 會是 one 的 7 倍左右。
+    // 批次化之後撈 Attempt 的次數與到期卡數無關（固定 1 次批次查詢）。
+    // 用關係式而非硬編碼上限：日後正當多一次批次查詢也不該誤紅。
     expect(many).toBeLessThanOrEqual(one + 1);
-    expect(many).toBeLessThanOrEqual(2);
   });
 });
 
